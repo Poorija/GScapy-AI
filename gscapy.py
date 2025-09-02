@@ -992,287 +992,105 @@ class AISettingsDialog(QDialog):
         QMessageBox.warning(self, "Connection Failed", message)
 
 
-class TypingIndicator(QWidget):
-    """A widget that displays an animated typing indicator (three dots)."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(40)
-        self.dots = []
-        self.animations = QParallelAnimationGroup(self)
-        self.initial_positions = []
-
-        for i in range(3):
-            dot = QLabel("●", self)
-            dot.setStyleSheet("color: #888;")
-            self.dots.append(dot)
-            self.initial_positions.append(QPoint(0,0)) # Placeholder
-
-    def start_animation(self):
-        self.animations = QParallelAnimationGroup(self)
-        for i, dot in enumerate(self.dots):
-            start_pos = self.initial_positions[i]
-            end_pos = start_pos - QPoint(0, 10)
-
-            up_anim = QPropertyAnimation(dot, b"pos")
-            up_anim.setDuration(400)
-            up_anim.setStartValue(start_pos)
-            up_anim.setEndValue(end_pos)
-            up_anim.setEasingCurve(QEasingCurve.Type.OutInQuad)
-
-            down_anim = QPropertyAnimation(dot, b"pos")
-            down_anim.setDuration(400)
-            down_anim.setStartValue(end_pos)
-            down_anim.setEndValue(start_pos)
-            down_anim.setEasingCurve(QEasingCurve.Type.InQuad)
-
-            seq_group = QSequentialAnimationGroup()
-            seq_group.addPause(i * 150)
-            seq_group.addAnimation(up_anim)
-            seq_group.addAnimation(down_anim)
-            seq_group.setLoopCount(-1)
-            self.animations.addAnimation(seq_group)
-
-        self.show()
-        self.animations.start()
-
-    def stop_animation(self):
-        self.animations.stop()
-        self.hide()
-
-    def resizeEvent(self, event):
-        total_width = sum(dot.width() for dot in self.dots) + 10 * 2
-        start_x = (self.width() - total_width) // 2
-        y_pos = self.height() // 2 - 5
-
-        for i, dot in enumerate(self.dots):
-            x_pos = start_x + i * (dot.width() + 10)
-            self.initial_positions[i] = QPoint(x_pos, y_pos)
-            dot.move(self.initial_positions[i])
-        # If animation is running, restart it to use new positions
-        if self.animations.state() == QPropertyAnimation.State.Running:
-            self.start_animation()
-
-
-class ThinkingWidget(QFrame):
-    """A collapsible widget to show the AI's 'thinking' process."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet("""
-            ThinkingWidget {
-                border: 1px solid #4a90e2;
-                border-radius: 8px;
-                background-color: #262a33;
-                margin: 5px 50px 5px 5px;
-            }
-        """)
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setSpacing(0)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Header (button to collapse/expand)
-        self.header_button = QPushButton("  🤔 Thinking...")
-        self.header_button.setStyleSheet("""
-            QPushButton {
-                background-color: #303540;
-                border: none;
-                padding: 8px;
-                text-align: left;
-                font-weight: bold;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-            }
-        """)
-        self.header_button.clicked.connect(self.toggle_content)
-        self.main_layout.addWidget(self.header_button)
-
-        # Content area
-        self.content_area = QTextEdit()
-        self.content_area.setReadOnly(True)
-        self.content_area.setStyleSheet("""
-            QTextEdit {
-                border: none;
-                background-color: #262a33;
-                padding: 10px;
-                border-bottom-left-radius: 8px;
-                border-bottom-right-radius: 8px;
-            }
-        """)
-        self.main_layout.addWidget(self.content_area)
-        self.is_expanded = True
-
-    def toggle_content(self):
-        self.is_expanded = not self.is_expanded
-        self.content_area.setVisible(self.is_expanded)
-
-    def append_text(self, text):
-        self.content_area.insertPlainText(text)
-        self.content_area.verticalScrollBar().setValue(self.content_area.verticalScrollBar().maximum())
-
-    def get_full_text(self):
-        return self.content_area.toPlainText()
-
-
-class ChatBubble(QFrame):
-    """A styled chat bubble widget for displaying messages."""
-    def __init__(self, text, is_user=False, is_error=False, parent=None):
-        super().__init__(parent)
-        self.is_user = is_user
-        self.is_error = is_error
-
-        # Set style based on message type
-        if is_user:
-            style = "background-color: #3d5a80; color: #f0f0f0; margin-right: 50px;"
-        elif is_error:
-            style = "background-color: #d32f2f; color: white; margin-left: 50px;"
-        else: # AI message
-            style = "background-color: #4CAF50; color: white; margin-left: 50px;"
-
-        self.setStyleSheet(f"""
-            ChatBubble {{
-                {style}
-                border-radius: 15px;
-                padding: 1px;
-            }}
-        """)
-
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(12, 12, 12, 12)
-
-        self.text_label = QTextEdit()
-        self.text_label.setReadOnly(True)
-        self.text_label.setHtml(text)
-        self.text_label.setStyleSheet("background: transparent; border: none;")
-        # Disable scrollbars and let the bubble resize instead
-        self.text_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.text_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.text_label.document().contentsChanged.connect(self.update_size)
-
-        self.layout.addWidget(self.text_label)
-        # Call initial size update
-        self.update_size()
-
-
-    def update_size(self):
-        # Adjust the height of the QTextEdit to fit its content
-        doc_height = self.text_label.document().size().height()
-        self.text_label.setFixedHeight(int(doc_height) + 5) # Add a small margin
-
-    def append_text(self, text_chunk):
-        # Append text and ensure the view scrolls to the new content
-        cursor = self.text_label.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertText(text_chunk)
-        self.text_label.ensureCursorVisible()
-
-    def get_full_text(self):
-        return self.text_label.toPlainText()
-
-    def set_text(self, text):
-        self.text_label.setPlainText(text)
-
-
 class AIAnalysisThread(QThread):
-    """A thread to run AI analysis requests with support for streaming."""
-    thinking_started = pyqtSignal(str)
-    thinking_updated = pyqtSignal(str)
-    answer_started = pyqtSignal()
-    answer_updated = pyqtSignal(str)
-    finished = pyqtSignal()
+    """
+    A thread to run AI analysis requests in the background, supporting streaming.
+    Emits signals for each chunk of the response, distinguishing between 'thinking'
+    and 'answer' parts of the stream.
+    """
+    # Signal: (chunk, is_thinking, is_final_answer_chunk)
+    response_ready = pyqtSignal(str, bool, bool)
     error = pyqtSignal(str)
 
-    def __init__(self, endpoint, model, prompt, headers=None, parent=None):
+    def __init__(self, prompt, settings, parent=None):
         super().__init__(parent)
-        self.endpoint = endpoint
-        self.model = model
         self.prompt = prompt
-        self.headers = headers or {}
+        self.settings = settings
         self.stop_event = Event()
 
     def run(self):
         try:
             import requests
-            # Add a system prompt to guide the AI's output format
-            system_prompt = "You are a helpful cybersecurity assistant. First, think step-by-step about the user's query. Enclose your entire thinking process within [THINKING] ... [THINKING] tags. After your thinking process, provide the final, user-facing answer inside [ANSWER] ... [ANSWER] tags."
+            import json
 
+            provider = self.settings.get("provider")
+            endpoint = self.settings.get("endpoint")
+            model = self.settings.get("model")
+            api_key = self.settings.get("api_key")
+
+            if not provider or not model or not endpoint:
+                raise ValueError("AI provider, model, or endpoint is not configured.")
+
+            headers = {"Content-Type": "application/json"}
+            if api_key and provider == "OpenAI":
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            # The payload now includes the 'stream': True parameter
             payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": self.prompt}
-                ],
-                "stream": True,
-                "options": {"temperature": 0.5}
+                "model": model,
+                "messages": [{"role": "user", "content": self.prompt}],
+                "stream": True
             }
 
-            with requests.post(self.endpoint, json=payload, headers=self.headers, stream=True, timeout=120) as response:
+            with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60) as response:
                 response.raise_for_status()
 
-                state = 0  # 0=Waiting, 1=Thinking, 2=Answering
-                buffer = ""
+                # These flags help manage the stream state
+                is_thinking_phase = False
+                is_answer_phase = False
 
                 for line in response.iter_lines():
-                    if self.stop_event.is_set(): break
-                    if not line: continue
+                    if self.stop_event.is_set():
+                        break
+                    if not line:
+                        continue
+
+                    line = line.decode('utf-8')
+                    # For Ollama, the response is a series of JSON objects, one per line
+                    if line.startswith('data:'): # Server-Sent Events format
+                        line = line[5:].strip()
 
                     try:
                         data = json.loads(line)
-                        content_part = data.get("message", {}).get("content", "") or data.get("response", "")
-                        buffer += content_part
+                        chunk = ""
+                        # --- Handle response format for different providers ---
+                        # Ollama format
+                        if 'message' in data:
+                            chunk = data['message'].get('content', '')
+                        # OpenAI format
+                        elif 'choices' in data and data['choices']:
+                            delta = data['choices'][0].get('delta', {})
+                            if 'content' in delta:
+                                chunk = delta['content'] or ""
+                        # Fallback for simple completion APIs
+                        elif 'response' in data:
+                            chunk = data.get('response','')
 
-                        # State machine for parsing [THINKING] and [ANSWER] tags
-                        if state == 0 and '[THINKING]' in buffer:
-                            parts = buffer.split('[THINKING]', 1)
-                            buffer = parts[1]
-                            self.thinking_started.emit("")
-                            state = 1
+                        if not chunk:
+                            continue
 
-                        if state == 1 and '[THINKING]' in buffer: # End of thinking
-                            parts = buffer.split('[THINKING]', 1)
-                            self.thinking_updated.emit(parts[0])
-                            buffer = parts[1]
-                            state = 0 # Wait for answer
+                        # --- State management for THINKING/ANSWER ---
+                        if "[THINKING]" in chunk:
+                            is_thinking_phase = True
+                            chunk = chunk.replace("[THINKING]", "").strip()
 
-                        if state != 2 and '[ANSWER]' in buffer:
-                            if state == 1: # Was thinking
-                                parts = buffer.split('[ANSWER]', 1)
-                                self.thinking_updated.emit(parts[0])
-                                buffer = parts[1]
-                            else: # Started straight with an answer
-                                parts = buffer.split('[ANSWER]', 1)
-                                buffer = parts[1]
+                        if "[ANSWER]" in chunk:
+                            is_thinking_phase = False
+                            is_answer_phase = True
+                            chunk = chunk.replace("[ANSWER]", "").strip()
 
-                            self.answer_started.emit()
-                            state = 2
-
-                        if state == 2 and '[ANSWER]' in buffer: # End of answer
-                            parts = buffer.split('[ANSWER]', 1)
-                            self.answer_updated.emit(parts[0])
-                            buffer = "" # Discard anything after final answer tag
-                            break # End of stream processing
-
-                        # Emit content based on current state
-                        if state == 1:
-                            self.thinking_updated.emit(buffer)
-                            buffer = ""
-                        elif state == 2:
-                            self.answer_updated.emit(buffer)
-                            buffer = ""
+                        if chunk:
+                            # Emit the chunk with its current state
+                            self.response_ready.emit(chunk, is_thinking_phase, not is_thinking_phase)
 
                     except json.JSONDecodeError:
-                        logging.warning(f"Could not decode JSON chunk: {line}")
+                        logging.warning(f"Could not decode JSON from stream line: {line}")
                         continue
-
-                # Handle any remaining buffer content after the loop
-                if state == 1: self.thinking_updated.emit(buffer)
-                elif state == 2: self.answer_updated.emit(buffer)
 
         except Exception as e:
             error_message = f"Failed to get AI analysis: {e}"
             logging.error(error_message, exc_info=True)
             self.error.emit(error_message)
-        finally:
-            self.finished.emit()
 
     def stop(self):
         self.stop_event.set()
@@ -1401,6 +1219,225 @@ class AIGuideDialog(QDialog):
         ok_button.clicked.connect(self.accept)
         layout.addWidget(ok_button, 0, Qt.AlignmentFlag.AlignRight)
 
+class AIAssistantTab(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.thinking_widget = None
+        self.current_ai_bubble = None
+        self.ai_thread = None
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        # Chat display area
+        self.chat_list = QListWidget(self)
+        self.chat_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.chat_list.setStyleSheet("""
+            QListWidget {
+                background-color: #ffffff;
+                border: none;
+            }
+        """)
+        layout.addWidget(self.chat_list)
+
+        # Typing indicator
+        self.typing_indicator = TypingIndicator(self)
+        self.typing_indicator.setFixedHeight(30)
+        self.typing_indicator.hide()
+        layout.addWidget(self.typing_indicator)
+
+
+        # User input area
+        input_frame = QFrame(self)
+        input_frame.setObjectName("inputFrame")
+        input_frame.setStyleSheet("""
+            #inputFrame {
+                border: 1px solid #d0d0d0;
+                border-radius: 20px;
+                background-color: #fdfdfd;
+            }
+        """)
+
+        input_layout = QHBoxLayout(input_frame)
+        input_layout.setContentsMargins(15, 5, 5, 5)
+        input_layout.setSpacing(10)
+
+        self.user_input = QLineEdit(self)
+        self.user_input.setPlaceholderText("Ask the AI Assistant...")
+        self.user_input.setStyleSheet("border: none; background-color: transparent; font-size: 14px;")
+        input_layout.addWidget(self.user_input)
+
+        self.send_button = QPushButton(self)
+        # Using a unicode character for the send icon
+        self.send_button.setText("\u25B6")
+        self.send_button.setFixedSize(30, 30)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border-radius: 15px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+            QPushButton:pressed {
+                background-color: #004499;
+            }
+        """)
+        input_layout.addWidget(self.send_button)
+        layout.addWidget(input_frame)
+
+        self.send_button.clicked.connect(self.send_message)
+        self.user_input.returnPressed.connect(self.send_message)
+
+    def _add_chat_bubble(self, message, is_user):
+        item = QListWidgetItem(self.chat_list)
+        bubble = ChatBubble(message, is_user)
+        item.setSizeHint(bubble.sizeHint())
+        self.chat_list.addItem(item)
+        self.chat_list.setItemWidget(item, bubble)
+        self.chat_list.scrollToBottom()
+
+    def _show_typing_indicator(self, show=True):
+        if show:
+            self.typing_indicator.show()
+            self.typing_indicator.start_animation()
+        else:
+            self.typing_indicator.hide()
+            self.typing_indicator.stop_animation()
+
+    def send_message(self):
+        user_text = self.user_input.text().strip()
+        if not user_text:
+            return
+
+        self._add_chat_bubble(user_text, is_user=True)
+        self.user_input.clear()
+        self.start_ai_analysis(user_text)
+
+    def start_ai_analysis(self, prompt):
+        ai_settings = self.parent.get_ai_settings()
+        if not ai_settings:
+            # Error message is already shown by get_ai_settings
+            return
+
+        self._show_typing_indicator(True)
+        self.ai_thread = AIAnalysisThread(prompt, ai_settings, self)
+        self.ai_thread.response_ready.connect(self.handle_ai_response)
+        self.ai_thread.error.connect(self.handle_ai_error)
+        self.ai_thread.finished.connect(self.on_ai_thread_finished)
+        self.ai_thread.start()
+
+    def handle_ai_response(self, chunk, is_thinking, is_final_answer_chunk):
+        self._show_typing_indicator(False)
+
+        if is_thinking:
+            if not self.thinking_widget:
+                # Create and add the thinking widget to the list
+                self.thinking_widget = ThinkingWidget()
+                item = QListWidgetItem(self.chat_list)
+                item.setSizeHint(self.thinking_widget.sizeHint())
+                self.chat_list.addItem(item)
+                self.chat_list.setItemWidget(item, self.thinking_widget)
+                self.thinking_widget.show()
+            self.thinking_widget.append_text(chunk)
+        else:
+             # Once we start getting the answer, hide the thinking widget if it exists
+            if self.thinking_widget and not self.thinking_widget.is_collapsed():
+                 self.thinking_widget.toggle_content() # Collapse it
+
+            if self.current_ai_bubble is None:
+                item = QListWidgetItem(self.chat_list)
+                self.current_ai_bubble = ChatBubble("", is_user=False, is_streaming=True)
+                item.setSizeHint(self.current_ai_bubble.sizeHint())
+                self.chat_list.addItem(item)
+                self.chat_list.setItemWidget(item, self.current_ai_bubble)
+
+            self.current_ai_bubble.append_text(chunk)
+            # This is a bit of a hack to force the QListWidget to resize the item
+            list_item = self.chat_list.item(self.chat_list.count() - 1)
+            if list_item:
+                list_item.setSizeHint(self.current_ai_bubble.sizeHint())
+            self.chat_list.scrollToBottom()
+
+
+    def on_ai_thread_finished(self):
+        self._show_typing_indicator(False)
+        # Finalize the bubble
+        if self.current_ai_bubble:
+            self.current_ai_bubble.finish_streaming()
+        # Reset for the next message
+        self.thinking_widget = None
+        self.current_ai_bubble = None
+
+
+    def handle_ai_error(self, error_message):
+        self._show_typing_indicator(False)
+        self._add_chat_bubble(f"Error: {error_message}", is_user=False)
+        if self.thinking_widget:
+            self.thinking_widget.hide()
+        # Reset state
+        self.thinking_widget = None
+        self.current_ai_bubble = None
+
+    def send_to_analyst(self, tool_name, results_data=None, context=None):
+        """Formats scan results and sends them to the AI Assistant's input box."""
+        formatted_results = ""
+        header = ""
+
+        if tool_name == "nmap":
+            header = f"Nmap scan results for target: {context}"
+            if results_data: # Assumes results_data is XML string
+                try:
+                    root = etree.fromstring(results_data.encode('utf-8'))
+                    lines = []
+                    for host in root.findall('host'):
+                        addr = host.find('address').get('addr')
+                        lines.append(f"Host: {addr}")
+                        for port in host.findall('ports/port'):
+                            if port.find('state').get('state') == 'open':
+                                portid = port.get('portid')
+                                protocol = port.get('protocol')
+                                service_elem = port.find('service')
+                                service = service_elem.get('name', 'unknown') if service_elem is not None else 'unknown'
+                                version = service_elem.get('product', '') if service_elem is not None else ''
+                                lines.append(f"  - Port {portid}/{protocol} ({service}): {version}")
+                    formatted_results = "\n".join(lines)
+                except Exception as e:
+                    logging.error(f"Could not parse Nmap XML for AI analysis: {e}")
+                    # Fallback to just sending the raw XML
+                    formatted_results = results_data
+            else:
+                formatted_results = "No Nmap XML data available."
+
+        elif tool_name == "subdomain" and isinstance(results_data, QTreeWidget):
+            domain = context or "unknown domain"
+            header = f"Subdomain scan results for: {domain}"
+            items = [results_data.topLevelItem(i).text(0) for i in range(results_data.topLevelItemCount())]
+            formatted_results = "\n".join(items)
+
+        elif tool_name == "port_scanner" and isinstance(results_data, list):
+            target = context or "unknown target"
+            header = f"Port scan results for: {target}"
+            lines = [f"Port {p} is {s} ({srv})" for p, s, srv in results_data]
+            formatted_results = "\n".join(lines)
+
+        if not formatted_results.strip():
+            QMessageBox.information(self, "No Data", "No data available to send.")
+            return
+
+        # Prepare a prompt that gives the AI context
+        full_text = f"Analyze the following results from the {tool_name} tool and provide a summary of potential vulnerabilities or next steps for a penetration tester.\n\n--- {header} ---\n{formatted_results}\n--- END OF DATA ---"
+
+        self.user_input.setText(full_text)
+        self.parent.tab_widget.setCurrentWidget(self)
+        logging.info(f"Sent {tool_name} results to AI Assistant tab.")
+
 # --- Main Application ---
 class GScapy(QMainWindow):
     """The main application window, holding all UI elements and logic."""
@@ -1437,10 +1474,6 @@ class GScapy(QMainWindow):
         self.sniffer_packet_buffer = []
         self.sniffer_buffer_lock = Lock()
         self.super_scan_active = False
-        self.current_thinking_widget = None
-        self.current_ai_bubble = None
-        self.current_typing_indicator = None
-        self.ai_thread = None
 
         self.nmap_script_presets = {
             "HTTP Service Info": ("http-title,http-headers", "", "Gathers the title and headers from web servers."),
@@ -1501,313 +1534,67 @@ class GScapy(QMainWindow):
         dialog = AIGuideDialog(self)
         dialog.exec()
 
-    def _send_to_ai_analyst(self, tool_name, results_data=None, context=None):
-        """Formats scan results and sends them to the AI Assistant's input box."""
-        formatted_results = ""
-        header = ""
-
-        if tool_name == "nmap":
-            header = f"Nmap scan results for target: {self.nmap_target_edit.text()}"
-            if self.nmap_last_xml:
-                try:
-                    root = etree.fromstring(self.nmap_last_xml.encode('utf-8'))
-                    lines = []
-                    for host in root.findall('host'):
-                        addr = host.find('address').get('addr')
-                        lines.append(f"Host: {addr}")
-                        for port in host.findall('ports/port'):
-                            if port.find('state').get('state') == 'open':
-                                portid = port.get('portid')
-                                protocol = port.get('protocol')
-                                service_elem = port.find('service')
-                                service = service_elem.get('name', 'unknown') if service_elem is not None else 'unknown'
-                                version = service_elem.get('product', '') if service_elem is not None else ''
-                                lines.append(f"  - Port {portid}/{protocol} ({service}): {version}")
-                    formatted_results = "\n".join(lines)
-                except Exception:
-                    formatted_results = self.nmap_output_console.toPlainText()
-            else:
-                formatted_results = self.nmap_output_console.toPlainText()
-
-        elif tool_name == "subdomain" and isinstance(results_data, QTreeWidget):
-            domain = context or "unknown domain"
-            header = f"Subdomain scan results for: {domain}"
-            items = [results_data.topLevelItem(i).text(0) for i in range(results_data.topLevelItemCount())]
-            formatted_results = "\n".join(items)
-
-        elif tool_name == "port_scanner" and isinstance(results_data, list):
-            target = context or self.scan_target.text()
-            header = f"Port scan results for: {target}"
-            lines = [f"Port {p} is {s} ({srv})" for p, s, srv in results_data]
-            formatted_results = "\n".join(lines)
-
-        if not formatted_results.strip():
-            QMessageBox.information(self, "No Data", "No data available to send.")
-            return
-
-        full_text = f"--- {header} ---\n{formatted_results}\n--- END OF DATA ---\n"
-
-        self.ai_input_text.setPlainText(full_text)
-        self.tab_widget.setCurrentWidget(self.ai_assistant_tab)
-        logging.info(f"Sent {tool_name} results to AI Assistant tab.")
-
-    def _create_ai_assistant_tab(self):
-        """Creates the UI for the AI Assistant chat tab with a side-by-side layout."""
-        widget = QWidget()
-        main_layout = QHBoxLayout(widget)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
-
-        # --- Left Pane: Prompt Library ---
-        self.ai_prompts = {
-            "Threat Detection & Analysis": {
-                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
-                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
-                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
-                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
-                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
-                "Scan Database Logs for Breaches": "Scan the following database logs and identify any unauthorized access attempts or unusual data queries. Look for queries from unexpected IP addresses, unusually large data exports, or repeated failed login attempts.",
-                "Detect DNS Hijacking": "Analyze the following DNS traffic and detect any signs of domain hijacking or DNS poisoning. Look for unexpected responses to DNS queries or traffic being redirected to suspicious IP addresses.",
-                "Identify Network Misconfigurations": "Perform a vulnerability scan on the following list of network devices and identify any potential weaknesses or misconfigurations, such as open management ports, default credentials, or outdated firmware.",
-                "Detect Data Exfiltration": "Analyze the following network traffic patterns to detect any large data exfiltration or unusual data transfers. Look for large, encrypted uploads to external sites or sustained outbound connections.",
-                "Identify Brute-Force Attacks": "Monitor the following system login attempts and identify any brute-force attacks or login anomalies. Look for a high volume of failed logins from a single IP or for a single user account.",
-            },
-            "Incident Response": {
-                "Fuzz for XML Files with Gobuster": "How can I fuzz for .xml files on a web server at {TARGET_URL} using gobuster?",
-                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
-                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
-                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
-                "Forensic Analysis Guide": "Assist in performing a forensic analysis on a compromised Linux system to identify the incident’s root cause. What are the first 5 steps I should take?",
-                "Coordinate IR Team Communication": "Act as a facilitator for communication and collaboration among incident response team members during a major security incident. What are the key pieces of information to share?",
-                "Contain a Spreading Malware": "Recommend and execute incident containment measures to minimize further damage from a malware infection that is spreading across the corporate network.",
-                "Generate Incident Report": "Assist in generating an incident response report with detailed timelines, actions taken, and lessons learned from the provided data.",
-                "Engage Law Enforcement": "Guide an incident response team through the process of notifying and engaging law enforcement agencies for a cybercrime event.",
-                "Post-Incident Review Guide": "Assist in conducting a post-incident review to identify vulnerabilities and improve incident response procedures after a data breach.",
-            },
-            "Vulnerability Assessment & PenTesting": {
-                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
-                "Simulate Phishing Campaign": "I need to simulate a phishing campaign targeting employees to assess their susceptibility and raise awareness. Provide three different email templates for this.",
-                "Penetration Test Web Application": "Perform a penetration test on the following web application description to identify potential security flaws and suggest remediation measures. The application is a customer portal at {TARGET_URL}.",
-                "Secure Wireless Network": "Analyze the following wireless network configuration and recommend security enhancements to prevent unauthorized access. The current setup uses WPA2-PSK with a known weak password.",
-                "Harden Web Server": "Review the following Nginx server configuration and recommend hardening measures to protect against known vulnerabilities and exploits.",
-                "Evaluate Physical Security": "Assess the effectiveness of physical security controls by simulating unauthorized access attempts to a restricted data center. What are common techniques to test?",
-                "Test DDoS Resilience": "Evaluate the resilience of our network infrastructure against a DDoS attack. Propose three different mitigation strategies we could implement.",
-                "Assess IoT Device Security": "Conduct a vulnerability assessment on an IoT camera at IP {TARGET_IP}. Identify potential entry points for attackers and recommend security measures.",
-                "Audit Third-Party Vendor Security": "Assess the security posture of a third-party vendor by conducting a security audit. Provide a checklist of the top 10 things to review.",
-                "Review Incident Response Plan": "Review our organization’s incident response plan and simulate a ransomware attack scenario to identify areas for improvement.",
-                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
-                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
-                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
-                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
-                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
-            },
-            "Scripting & Automation": {
-                "Generate Nmap Port Scan Script": "Generate a bash script that automates port scanning with Nmap for a list of IPs in a file named 'targets.txt' and saves the output for each IP.",
-                "Create Python Scapy Script": "Write a Python script using Scapy to send a TCP SYN packet to port 80 of a target IP address and print whether the port is open or closed.",
-                "Automate Log Analysis with Python": "Write a Python script to parse an Apache access log file and identify the top 10 IP addresses with the most requests.",
-                "PowerShell for User Audit": "Write a PowerShell script to audit all local user accounts on a Windows machine and flag any that have not been logged into for over 90 days.",
-                "Bash Script to Check for Open Ports": "Create a simple bash script that uses 'netcat' to check if a specific port is open on a given host.",
-                "Detect Registry Changes with ELK": "Provide an ELK query to detect changes in the Windows Registry, specifically focusing on keys related to startup programs.",
-                "Python Script to Detect XSS": "Write a Python script that takes a URL as input and checks for basic reflected XSS vulnerabilities by testing common payloads in URL parameters.",
-                "Automate Subdomain Enumeration": "Create a bash script that chains together 'subfinder' and 'httpx' to find live subdomains for a given domain.",
-                "PowerShell to Disable Inactive Accounts": "Write a PowerShell script for Active Directory that finds user accounts that have been inactive for 60 days and disables them.",
-                "Python Script for Password Strength": "Write a Python script that takes a password as input and rates its strength based on length, and inclusion of uppercase, lowercase, numbers, and symbols.",
-            },
-            "Policy & Compliance": {
-                "Draft Data Protection Policy": "Provide guidance on drafting a data protection and privacy policy in accordance with GDPR for a small e-commerce company.",
-                "Update Security Policies": "Review the following (outdated) security policy and suggest updates to align with modern industry best practices and the evolving threat landscape.",
-                "Develop Password Management Policy": "Assist in developing a password management policy that promotes strong, unique passwords and the use of multi-factor authentication (MFA).",
-                "Create Mobile Device Policy (BYOD)": "Offer recommendations for creating a mobile device management policy (MDM) to secure employee-owned devices (BYOD) and protect corporate data.",
-                "Establish Network Access Control Policy": "Assist in establishing a network access control (NAC) policy to ensure only authorized and compliant devices can connect to the organization’s network.",
-                "Outline Incident Response Policy": "Provide guidance on creating an incident response policy that clearly outlines roles, responsibilities, communication channels, and escalation procedures.",
-                "Define Patch Management Policy": "Help define a patch management policy that ensures timely updates and vulnerability remediation across all systems and software, with a focus on critical assets.",
-                "Develop Encryption Policy": "Assist in developing a data encryption policy to protect sensitive data at rest and in transit, specifying required algorithms and key management procedures.",
-                "Create Employee Training Policy": "Guide the creation of an employee security training and awareness policy to promote a security-conscious culture within the organization.",
-                "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
-            },
-        }
-        self.prompt_tree = QTreeWidget()
-        self.prompt_tree.setHeaderHidden(True)
-        self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
-        for category, prompts in self.ai_prompts.items():
-            category_item = QTreeWidgetItem(self.prompt_tree, [category])
-            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            font = category_item.font(0); font.setBold(True); category_item.setFont(0, font)
-            for prompt_name, prompt_text in prompts.items():
-                prompt_item = QTreeWidgetItem(category_item, [prompt_name])
-                prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text)
-                prompt_item.setToolTip(0, prompt_text)
-        splitter.addWidget(self.prompt_tree)
-
-        # --- Right Pane: Chat Interface ---
-        chat_container = QWidget()
-        chat_layout = QVBoxLayout(chat_container)
-
-        # Chat history area
-        self.chat_scroll_area = QScrollArea()
-        self.chat_scroll_area.setWidgetResizable(True)
-        self.chat_scroll_area.setStyleSheet("QScrollArea { border: none; }")
-        self.chat_widget = QWidget()
-        self.chat_layout = QVBoxLayout(self.chat_widget)
-        self.chat_layout.addStretch()
-        self.chat_scroll_area.setWidget(self.chat_widget)
-        chat_layout.addWidget(self.chat_scroll_area)
-
-        # --- Input & Send ---
-        input_layout = QHBoxLayout()
-        self.ai_input_text = QTextEdit()
-        self.ai_input_text.setPlaceholderText("Enter your message, paste data, or select a prompt from the left...")
-        self.ai_input_text.setFixedHeight(100)
-        input_layout.addWidget(self.ai_input_text)
-
-        button_vbox = QVBoxLayout()
-        self.send_button = QPushButton("Send")
-        self.send_button.setToolTip("Send the message to the AI")
-        self.send_button.clicked.connect(self._send_chat_message)
-        self.ai_settings_btn = QPushButton()
-        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
-        self.ai_settings_btn.setToolTip("Configure AI Models")
-        self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
-        button_vbox.addWidget(self.send_button)
-        button_vbox.addWidget(self.ai_settings_btn)
-        input_layout.addLayout(button_vbox)
-        chat_layout.addLayout(input_layout)
-        splitter.addWidget(chat_container)
-
-        splitter.setSizes([300, 700])
-
-        # Add a simple welcome message directly, avoiding the old problematic methods.
-        welcome_label = QLabel("<h1>GScapy + AI Assistant</h1><p><i>Select a prompt from the left or type your query below.</i></p>")
-        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        welcome_label.setWordWrap(True)
-        self.chat_layout.insertWidget(0, welcome_label)
-
-        return widget
-
-    def _add_widget_to_chat(self, widget):
-        """Helper to add a widget to the chat layout and scroll to it."""
-        # Insert before the stretch item
-        self.chat_layout.insertWidget(self.chat_layout.count() - 1, widget)
-        QApplication.processEvents() # Allow the UI to update
-        self.chat_scroll_area.verticalScrollBar().setValue(
-            self.chat_scroll_area.verticalScrollBar().maximum()
-        )
-
-    def _send_chat_message(self):
-        user_text = self.ai_input_text.toPlainText().strip()
-        if not user_text or (self.ai_thread and self.ai_thread.isRunning()):
-            return
-
-        self.ai_input_text.clear()
-        user_bubble = ChatBubble(user_text, is_user=True)
-        self._add_widget_to_chat(user_bubble)
-
-        # Show typing indicator
-        if not hasattr(self, 'current_typing_indicator') or not self.current_typing_indicator:
-            self.current_typing_indicator = TypingIndicator()
-            self._add_widget_to_chat(self.current_typing_indicator)
-        self.current_typing_indicator.start_animation()
-
-        # Load settings and run thread
+    def get_ai_settings(self):
+        """
+        Loads AI settings from the JSON file and returns a dictionary
+        containing the active provider's details (endpoint, model, api_key).
+        """
         settings_file = "ai_settings.json"
         try:
             if not os.path.exists(settings_file):
-                self._on_ai_error("AI settings not found. Please configure from Help > AI Settings.")
-                return
+                # Show settings dialog if no config exists
+                if self._show_ai_settings_dialog() == QDialog.DialogCode.Rejected:
+                    return None # User cancelled
 
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
 
-            active_provider = settings.get("active_provider")
-            active_model = settings.get("active_model")
-            headers = {}
-            endpoint = None
-            model = active_model
+            active_provider_name = settings.get("active_provider")
+            active_model_name = settings.get("active_model")
 
-            if not active_provider or not active_model:
-                self._on_ai_error("No active AI model selected. Please click the gear icon to choose one.")
-                return
+            if not active_provider_name or not active_model_name:
+                self.ai_assistant_tab.handle_ai_error("No active AI model selected. Please click the settings icon to choose one.")
+                return None
 
-            if active_provider == "local_ai":
-                endpoint = settings.get("local_ai", {}).get("endpoint")
-            else:
-                provider_data = settings.get("online_ai", {}).get(active_provider, {})
+            provider_details = {}
+            if active_provider_name == "local_ai":
+                local_settings = settings.get("local_ai", {})
+                provider_details = {
+                    "provider": "local_ai",
+                    "endpoint": local_settings.get("endpoint"),
+                    "model": active_model_name,
+                    "api_key": None
+                }
+            else: # It's an online service
+                online_settings = settings.get("online_ai", {})
+                provider_data = online_settings.get(active_provider_name, {})
                 api_key = provider_data.get("api_key")
-                if active_provider == "OpenAI":
+
+                endpoint = ""
+                if active_provider_name == "OpenAI":
                     endpoint = "https://api.openai.com/v1/chat/completions"
-                    headers["Authorization"] = f"Bearer {api_key}"
+                # ... (add other online providers here)
 
-            if not endpoint:
-                self._on_ai_error(f"Endpoint for '{active_provider}' is not configured.")
-                return
+                provider_details = {
+                    "provider": active_provider_name,
+                    "endpoint": endpoint,
+                    "model": active_model_name,
+                    "api_key": api_key
+                }
 
-            self.ai_thread = AIAnalysisThread(endpoint, model, user_text, headers, self)
-            self.ai_thread.thinking_started.connect(self._on_ai_thinking_started)
-            self.ai_thread.thinking_updated.connect(self._on_ai_thinking_updated)
-            self.ai_thread.answer_started.connect(self._on_ai_answer_started)
-            self.ai_thread.answer_updated.connect(self._on_ai_answer_updated)
-            self.ai_thread.finished.connect(self._on_ai_finished)
-            self.ai_thread.error.connect(self._on_ai_error)
-            self.ai_thread.start()
+            if not provider_details.get("endpoint"):
+                 self.ai_assistant_tab.handle_ai_error(f"Endpoint for '{active_provider_name}' is missing or not supported yet.")
+                 return None
 
+            return provider_details
+
+        except (IOError, json.JSONDecodeError) as e:
+            self.ai_assistant_tab.handle_ai_error(f"Error loading AI settings: {e}")
+            return None
         except Exception as e:
-            self._on_ai_error(f"Failed to start AI task: {e}")
+            self.ai_assistant_tab.handle_ai_error(f"An unexpected error occurred while getting AI settings: {e}")
+            return None
 
-    def _on_ai_thinking_started(self, initial_content):
-        if self.current_typing_indicator:
-            self.current_typing_indicator.stop_animation()
-        self.current_thinking_widget = ThinkingWidget()
-        self.current_thinking_widget.append_text(initial_content)
-        self._add_widget_to_chat(self.current_thinking_widget)
-
-    def _on_ai_thinking_updated(self, content_chunk):
-        if self.current_thinking_widget:
-            self.current_thinking_widget.append_text(content_chunk)
-
-    def _on_ai_answer_started(self):
-        # Finalize the thinking widget by collapsing it
-        if self.current_thinking_widget:
-            if not self.current_thinking_widget.get_full_text().strip():
-                self.current_thinking_widget.hide() # Hide if empty
-            else:
-                self.current_thinking_widget.toggle_content() # Collapse if it has content
-            self.current_thinking_widget = None
-
-        self.current_ai_bubble = ChatBubble("", is_user=False)
-        self._add_widget_to_chat(self.current_ai_bubble)
-
-    def _on_ai_answer_updated(self, content_chunk):
-        if self.current_ai_bubble:
-            self.current_ai_bubble.append_text(content_chunk)
-
-    def _on_ai_finished(self):
-        if self.current_typing_indicator:
-            self.current_typing_indicator.stop_animation()
-
-        # Handle cases where the stream ends unexpectedly
-        if self.current_thinking_widget:
-            if not self.current_thinking_widget.get_full_text().strip():
-                self.current_thinking_widget.hide()
-        if not self.current_ai_bubble and not self.current_thinking_widget:
-             self._on_ai_error("The AI produced an empty response.")
-
-        self.current_thinking_widget = None
-        self.current_ai_bubble = None
-        self.ai_thread = None
-
-    def _on_ai_error(self, error_message):
-        if self.current_typing_indicator:
-            self.current_typing_indicator.stop_animation()
-        error_bubble = ChatBubble(f"<b>AI Error:</b><br>{error_message}", is_error=True)
-        self._add_widget_to_chat(error_bubble)
-        self.ai_thread = None
-
-    def _on_prompt_selected(self, item, column):
-        """Handles clicks on the prompt tree to populate the input box."""
-        if item and item.parent():
-            prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
-            if prompt_text:
-                self.ai_input_text.setPlainText(prompt_text)
 
     def _show_about_dialog(self):
         about_text = """
@@ -1946,8 +1733,11 @@ class GScapy(QMainWindow):
         self.tab_widget.addTab(self._create_tools_tab(), QIcon("icons/tool.svg"), "Network Tools")
         self.tab_widget.addTab(self._create_advanced_tools_tab(), QIcon("icons/shield.svg"), "Advanced Tools")
         self.tab_widget.addTab(self._create_wireless_tools_tab(), QIcon("icons/wifi.svg"), "Wireless Tools")
-        self.ai_assistant_tab = self._create_ai_assistant_tab()
+
+        # The AI Assistant Tab is now its own class
+        self.ai_assistant_tab = AIAssistantTab(self)
         self.tab_widget.addTab(self.ai_assistant_tab, QIcon("icons/tool.svg"), "AI Assistant")
+
         self.tab_widget.addTab(self._create_community_tools_tab(), QIcon("icons/users.svg"), "Community Tools")
         self.tab_widget.addTab(self._create_system_info_tab(), QIcon("icons/info.svg"), "System Info")
 
@@ -2280,7 +2070,7 @@ class GScapy(QMainWindow):
         self.nmap_start_btn.clicked.connect(self.start_nmap_scan)
         self.nmap_cancel_btn.clicked.connect(self.cancel_tool)
         self.nmap_report_btn.clicked.connect(self.generate_nmap_report)
-        self.nmap_ai_analyze_btn.clicked.connect(lambda: self._send_to_ai_analyst("nmap"))
+        self.nmap_ai_analyze_btn.clicked.connect(lambda: self.ai_assistant_tab.send_to_analyst("nmap", self.nmap_last_xml, self.nmap_target_edit.text()))
 
 
         # Logic to disable/enable options based on selections
@@ -3063,262 +2853,6 @@ class GScapy(QMainWindow):
         self.arp_spoof_stop_btn.clicked.connect(self.stop_arp_spoof)
 
         return widget
-
-    def _create_ai_assistant_tab(self):
-        """Creates the UI for the AI Assistant chat tab with a side-by-side layout."""
-        # Main widget and splitter layout
-        widget = QWidget()
-        main_layout = QHBoxLayout(widget) # Main layout for the tab
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_layout.addWidget(splitter)
-
-        # --- Right Pane: Chat Interface ---
-        chat_container = QWidget()
-        chat_layout = QVBoxLayout(chat_container)
-
-        self.ai_chat_history = QTextBrowser()
-        self.ai_chat_history.setOpenExternalLinks(True)
-        chat_layout.addWidget(self.ai_chat_history, 1) # Add stretch factor
-
-        self.ai_status_label = QLabel("<i>Querying AI... Please wait.</i>")
-        self.ai_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ai_status_label.setStyleSheet("color: #aaa;")
-        self.ai_status_label.hide()
-        chat_layout.addWidget(self.ai_status_label)
-
-        # --- Prompt Controls ---
-        prompt_box = QGroupBox("Prompt Helper")
-        prompt_layout = QHBoxLayout(prompt_box)
-
-        # This dictionary is now the master list of all prompts
-        self.ai_prompts = {
-            "Threat Detection & Analysis": {
-                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
-                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
-                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
-                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
-                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
-                "Scan Database Logs for Breaches": "Scan the following database logs and identify any unauthorized access attempts or unusual data queries. Look for queries from unexpected IP addresses, unusually large data exports, or repeated failed login attempts.",
-                "Detect DNS Hijacking": "Analyze the following DNS traffic and detect any signs of domain hijacking or DNS poisoning. Look for unexpected responses to DNS queries or traffic being redirected to suspicious IP addresses.",
-                "Identify Network Misconfigurations": "Perform a vulnerability scan on the following list of network devices and identify any potential weaknesses or misconfigurations, such as open management ports, default credentials, or outdated firmware.",
-                "Detect Data Exfiltration": "Analyze the following network traffic patterns to detect any large data exfiltration or unusual data transfers. Look for large, encrypted uploads to external sites or sustained outbound connections.",
-                "Identify Brute-Force Attacks": "Monitor the following system login attempts and identify any brute-force attacks or login anomalies. Look for a high volume of failed logins from a single IP or for a single user account.",
-            },
-            "Incident Response": {
-                "Fuzz for XML Files with Gobuster": "How can I fuzz for .xml files on a web server at {TARGET_URL} using gobuster?",
-                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
-                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
-                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
-                "Forensic Analysis Guide": "Assist in performing a forensic analysis on a compromised Linux system to identify the incident’s root cause. What are the first 5 steps I should take?",
-                "Coordinate IR Team Communication": "Act as a facilitator for communication and collaboration among incident response team members during a major security incident. What are the key pieces of information to share?",
-                "Contain a Spreading Malware": "Recommend and execute incident containment measures to minimize further damage from a malware infection that is spreading across the corporate network.",
-                "Generate Incident Report": "Assist in generating an incident response report with detailed timelines, actions taken, and lessons learned from the provided data.",
-                "Engage Law Enforcement": "Guide an incident response team through the process of notifying and engaging law enforcement agencies for a cybercrime event.",
-                "Post-Incident Review Guide": "Assist in conducting a post-incident review to identify vulnerabilities and improve incident response procedures after a data breach.",
-            },
-            "Vulnerability Assessment & PenTesting": {
-                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
-                "Simulate Phishing Campaign": "I need to simulate a phishing campaign targeting employees to assess their susceptibility and raise awareness. Provide three different email templates for this.",
-                "Penetration Test Web Application": "Perform a penetration test on the following web application description to identify potential security flaws and suggest remediation measures. The application is a customer portal at {TARGET_URL}.",
-                "Secure Wireless Network": "Analyze the following wireless network configuration and recommend security enhancements to prevent unauthorized access. The current setup uses WPA2-PSK with a known weak password.",
-                "Harden Web Server": "Review the following Nginx server configuration and recommend hardening measures to protect against known vulnerabilities and exploits.",
-                "Evaluate Physical Security": "Assess the effectiveness of physical security controls by simulating unauthorized access attempts to a restricted data center. What are common techniques to test?",
-                "Test DDoS Resilience": "Evaluate the resilience of our network infrastructure against a DDoS attack. Propose three different mitigation strategies we could implement.",
-                "Assess IoT Device Security": "Conduct a vulnerability assessment on an IoT camera at IP {TARGET_IP}. Identify potential entry points for attackers and recommend security measures.",
-                "Audit Third-Party Vendor Security": "Assess the security posture of a third-party vendor by conducting a security audit. Provide a checklist of the top 10 things to review.",
-                "Review Incident Response Plan": "Review our organization’s incident response plan and simulate a ransomware attack scenario to identify areas for improvement.",
-                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
-                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
-                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
-                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
-                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
-            },
-            "Scripting & Automation": {
-                "Generate Nmap Port Scan Script": "Generate a bash script that automates port scanning with Nmap for a list of IPs in a file named 'targets.txt' and saves the output for each IP.",
-                "Create Python Scapy Script": "Write a Python script using Scapy to send a TCP SYN packet to port 80 of a target IP address and print whether the port is open or closed.",
-                "Automate Log Analysis with Python": "Write a Python script to parse an Apache access log file and identify the top 10 IP addresses with the most requests.",
-                "PowerShell for User Audit": "Write a PowerShell script to audit all local user accounts on a Windows machine and flag any that have not been logged into for over 90 days.",
-                "Bash Script to Check for Open Ports": "Create a simple bash script that uses 'netcat' to check if a specific port is open on a given host.",
-                "Detect Registry Changes with ELK": "Provide an ELK query to detect changes in the Windows Registry, specifically focusing on keys related to startup programs.",
-                "Python Script to Detect XSS": "Write a Python script that takes a URL as input and checks for basic reflected XSS vulnerabilities by testing common payloads in URL parameters.",
-                "Automate Subdomain Enumeration": "Create a bash script that chains together 'subfinder' and 'httpx' to find live subdomains for a given domain.",
-                "PowerShell to Disable Inactive Accounts": "Write a PowerShell script for Active Directory that finds user accounts that have been inactive for 60 days and disables them.",
-                "Python Script for Password Strength": "Write a Python script that takes a password as input and rates its strength based on length, and inclusion of uppercase, lowercase, numbers, and symbols.",
-            },
-            "Policy & Compliance": {
-                "Draft Data Protection Policy": "Provide guidance on drafting a data protection and privacy policy in accordance with GDPR for a small e-commerce company.",
-                "Update Security Policies": "Review the following (outdated) security policy and suggest updates to align with modern industry best practices and the evolving threat landscape.",
-                "Develop Password Management Policy": "Assist in developing a password management policy that promotes strong, unique passwords and the use of multi-factor authentication (MFA).",
-                "Create Mobile Device Policy (BYOD)": "Offer recommendations for creating a mobile device management policy (MDM) to secure employee-owned devices (BYOD) and protect corporate data.",
-                "Establish Network Access Control Policy": "Assist in establishing a network access control (NAC) policy to ensure only authorized and compliant devices can connect to the organization’s network.",
-                "Outline Incident Response Policy": "Provide guidance on creating an incident response policy that clearly outlines roles, responsibilities, communication channels, and escalation procedures.",
-                "Define Patch Management Policy": "Help define a patch management policy that ensures timely updates and vulnerability remediation across all systems and software, with a focus on critical assets.",
-                "Develop Encryption Policy": "Assist in developing a data encryption policy to protect sensitive data at rest and in transit, specifying required algorithms and key management procedures.",
-                "Create Employee Training Policy": "Guide the creation of an employee security training and awareness policy to promote a security-conscious culture within the organization.",
-                "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
-            },
-        }
-
-        # --- Prompt UI Setup ---
-        self.prompt_tree = QTreeWidget()
-        self.prompt_tree.setHeaderHidden(True)
-        self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
-
-        for category, prompts in self.ai_prompts.items():
-            category_item = QTreeWidgetItem(self.prompt_tree, [category])
-            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            font = category_item.font(0)
-            font.setBold(True)
-            category_item.setFont(0, font)
-
-            for prompt_name, prompt_text in prompts.items():
-                prompt_item = QTreeWidgetItem(category_item, [prompt_name])
-                prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text) # Store full prompt in data role
-                prompt_item.setToolTip(0, prompt_text)
-
-        splitter.addWidget(self.prompt_tree)
-
-
-        # --- Input & Send ---
-        input_layout = QHBoxLayout() # Layout for text box and buttons
-
-        self.ai_input_text = QTextEdit()
-        self.ai_input_text.setPlaceholderText("Enter your message, paste data, or select a prompt from above...")
-        self.ai_input_text.setFixedHeight(100)
-        input_layout.addWidget(self.ai_input_text)
-
-        # Vertical layout for the two buttons
-        button_vbox = QVBoxLayout()
-        send_button = QPushButton("Send")
-        send_button.setToolTip("Send the message to the AI")
-        send_button.clicked.connect(self._send_chat_message)
-
-        self.ai_settings_btn = QPushButton()
-        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
-        self.ai_settings_btn.setToolTip("Configure AI Models")
-        self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
-
-        button_vbox.addWidget(send_button)
-        button_vbox.addWidget(self.ai_settings_btn)
-
-        input_layout.addLayout(button_vbox) # Add the vertical button layout to the main input layout
-        chat_layout.addLayout(input_layout)
-        splitter.addWidget(chat_container)
-
-        # Set initial sizes for the splitter
-        splitter.setSizes([300, 700])
-
-        self._show_initial_ai_suggestions()
-        return widget
-
-    def _on_prompt_selected(self, item, column):
-        """Handles clicks on the prompt tree to populate the input box."""
-        # Only act if the item is a child (a prompt, not a category) by checking if it has a parent.
-        if item and item.parent():
-            prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
-            if prompt_text:
-                self.ai_input_text.setPlainText(prompt_text)
-
-    def _show_initial_ai_suggestions(self):
-        """Shows a few random prompts in the chat window on startup."""
-        self.ai_chat_history.clear()
-        self.ai_chat_history.setHtml("<h1 align='center'>GScapy + AI Assistant</h1>")
-
-        all_prompts = []
-        for category in self.ai_prompts.values():
-            all_prompts.extend(category.keys())
-
-        if len(all_prompts) > 3:
-            suggestions = random.sample(all_prompts, 3)
-            self._append_ai_message("<b>Welcome! Here are a few things you could ask:</b>", is_user=False, is_status=True)
-            for suggestion in suggestions:
-                self._append_ai_message(suggestion, is_user=False, is_suggestion=True)
-
-    def _show_ai_settings_menu(self):
-        """Creates and shows a popup menu to select the active AI model."""
-        settings_file = "ai_settings.json"
-        try:
-            if not os.path.exists(settings_file):
-                QMessageBox.information(self, "Setup Required", "AI settings have not been configured yet. Please configure a provider in the advanced settings.")
-                if self._show_ai_settings_dialog() == QDialog.DialogCode.Rejected:
-                    return
-
-            with open(settings_file, 'r') as f:
-                settings = json.load(f)
-        except (IOError, json.JSONDecodeError) as e:
-            QMessageBox.warning(self, "Error", f"Could not load AI settings: {e}")
-            return
-
-        menu = QMenu(self)
-        provider_group = QActionGroup(self)
-        provider_group.setExclusive(True)
-
-        active_provider = settings.get("active_provider")
-        active_model = settings.get("active_model")
-
-        has_local_model = False
-        local_settings = settings.get("local_ai", {})
-        local_model_name = local_settings.get("model")
-        if local_model_name:
-            has_local_model = True
-            action = QAction(f"Local: {local_model_name}", self)
-            action.setCheckable(True)
-            if active_provider == "local_ai" and active_model == local_model_name:
-                action.setChecked(True)
-            action.triggered.connect(lambda chk, p="local_ai", m=local_model_name: self._set_active_ai_provider(p, m))
-            menu.addAction(action)
-            provider_group.addAction(action)
-
-        online_options_exist = False
-        online_menu = menu.addMenu("Online Services")
-        online_settings = settings.get("online_ai", {})
-        provider_names = ["OpenAI", "Gemini", "Grok", "DeepSeek", "Qwen"]
-
-        for provider_name in provider_names:
-            provider_data = online_settings.get(provider_name, {})
-            api_key = provider_data.get("api_key")
-            model_name = provider_data.get("model")
-
-            if api_key and model_name:
-                online_options_exist = True
-                action = QAction(f"{provider_name}: {model_name}", self)
-                action.setCheckable(True)
-                if active_provider == provider_name and active_model == model_name:
-                    action.setChecked(True)
-                action.triggered.connect(lambda chk, p=provider_name, m=model_name: self._set_active_ai_provider(p, m))
-                online_menu.addAction(action)
-                provider_group.addAction(action)
-
-        online_menu.setEnabled(online_options_exist)
-
-        if not has_local_model and not online_options_exist:
-             menu.addAction(QAction("No models configured...", self))
-
-        menu.addSeparator()
-        menu.addAction("Advanced Settings...", self._show_ai_settings_dialog)
-
-        menu.exec(self.ai_settings_btn.mapToGlobal(self.ai_settings_btn.rect().bottomLeft()))
-
-    def _set_active_ai_provider(self, provider_name, model_name):
-        """Saves the selected AI provider and model as the active one."""
-        settings_file = "ai_settings.json"
-        try:
-            settings = {}
-            if os.path.exists(settings_file):
-                with open(settings_file, 'r') as f:
-                    settings = json.load(f)
-
-            settings['active_provider'] = provider_name
-            settings['active_model'] = model_name
-
-            with open(settings_file, 'w') as f:
-                json.dump(settings, f, indent=4)
-
-            QMessageBox.information(self, "AI Model Changed", f"The active AI model has been set to:\n\nProvider: {provider_name}\nModel: {model_name}")
-            logging.info(f"AI Provider set to {provider_name} ({model_name})")
-
-        except (IOError, json.JSONDecodeError) as e:
-            QMessageBox.warning(self, "Error", f"Could not save AI settings: {e}")
 
     def _create_system_info_tab(self):
         """Creates the System Info tab with a redesigned, more modern layout."""
