@@ -2954,16 +2954,16 @@ class GScapy(QMainWindow):
 
         # Vertical layout for the two buttons
         button_vbox = QVBoxLayout()
-        send_button = QPushButton("Send")
-        send_button.setToolTip("Send the message to the AI")
-        send_button.clicked.connect(self._send_chat_message)
+        self.send_button = QPushButton("Send")
+        self.send_button.setToolTip("Send the message to the AI")
+        self.send_button.clicked.connect(self._send_chat_message)
 
         self.ai_settings_btn = QPushButton()
         self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
         self.ai_settings_btn.setToolTip("Configure AI Models")
         self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
 
-        button_vbox.addWidget(send_button)
+        button_vbox.addWidget(self.send_button)
         button_vbox.addWidget(self.ai_settings_btn)
 
         input_layout.addLayout(button_vbox) # Add the vertical button layout to the main input layout
