@@ -59,8 +59,8 @@ from PyQt6.QtWidgets import (
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
     QHeaderView, QInputDialog
 )
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer
-from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, pyqtProperty
+from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup, QPainter, QColor
 
 
 def sniffer_process_target(queue, iface, bpf_filter):
@@ -993,8 +993,9 @@ class AISettingsDialog(QDialog):
 
 
 class AIAnalysisThread(QThread):
-    """A thread to run AI analysis requests in the background."""
-    analysis_complete = pyqtSignal(str)
+    """A thread to run AI analysis requests in the background, supporting streaming."""
+    analysis_chunk_received = pyqtSignal(str)
+    analysis_complete = pyqtSignal() # Now signals completion without content
     analysis_error = pyqtSignal(str)
 
     def __init__(self, endpoint, model, prompt, headers=None, parent=None):
@@ -1003,31 +1004,55 @@ class AIAnalysisThread(QThread):
         self.model = model
         self.prompt = prompt
         self.headers = headers or {}
+        self.stop_event = Event()
 
     def run(self):
         try:
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": self.prompt}],
-                "stream": False
+                "stream": True # Enable streaming
             }
-            # Using requests library which is already a dependency for sublist3r
             import requests
-            response = requests.post(self.endpoint, json=payload, headers=self.headers, timeout=60)
-            response.raise_for_status() # Raise an exception for bad status codes
+            response = requests.post(self.endpoint, json=payload, headers=self.headers, timeout=60, stream=True)
+            response.raise_for_status()
 
-            response_data = response.json()
-            content = response_data.get("message", {}).get("content", "")
-            if not content:
-                # Fallback for completion-style APIs (like older Ollama or other models)
-                content = response_data.get("response", "No content found in response.")
+            # Handle streaming response
+            for line in response.iter_lines():
+                if self.stop_event.is_set():
+                    break
+                if line:
+                    try:
+                        json_line = line.decode('utf-8')
+                        data = json.loads(json_line)
 
-            self.analysis_complete.emit(content)
+                        # Structure for Ollama streaming
+                        content_chunk = data.get("message", {}).get("content", "")
+                        # Fallback for other streaming APIs (e.g., OpenAI-like)
+                        if not content_chunk:
+                           content_chunk = data.get("response", "") # e.g. older ollama
+                        if not content_chunk:
+                           content_chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+
+
+                        if content_chunk:
+                            self.analysis_chunk_received.emit(content_chunk)
+
+                    except json.JSONDecodeError:
+                        logging.warning(f"Could not decode JSON from stream line: {line}")
+                        continue
+                    except Exception as e:
+                        logging.error(f"Error processing stream line: {e}")
+
+            self.analysis_complete.emit()
 
         except Exception as e:
             error_message = f"Failed to get AI analysis: {e}"
             logging.error(error_message, exc_info=True)
             self.analysis_error.emit(error_message)
+
+    def stop(self):
+        self.stop_event.set()
 
 class AIAnalysisDialog(QDialog):
     """A dialog to show the results of AI analysis."""
@@ -1153,6 +1178,105 @@ class AIGuideDialog(QDialog):
         ok_button.clicked.connect(self.accept)
         layout.addWidget(ok_button, 0, Qt.AlignmentFlag.AlignRight)
 
+class TypingIndicator(QWidget):
+    """A widget that displays an animated 'typing' indicator with three pulsing dots."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(40)
+        self._opacity1 = 0
+        self._opacity2 = 0
+        self._opacity3 = 0
+
+        # Animation for the first dot
+        self.anim1 = QPropertyAnimation(self, b"opacity1")
+        self.anim1.setDuration(1200)
+        self.anim1.setStartValue(0)
+        self.anim1.setEndValue(255)
+        self.anim1.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.anim1.setLoopCount(-1) # Loop indefinitely
+
+        # Animation for the second dot
+        self.anim2 = QPropertyAnimation(self, b"opacity2")
+        self.anim2.setDuration(1200)
+        self.anim2.setStartValue(0)
+        self.anim2.setEndValue(255)
+        self.anim2.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.anim2.setLoopCount(-1)
+
+        # Animation for the third dot
+        self.anim3 = QPropertyAnimation(self, b"opacity3")
+        self.anim3.setDuration(1200)
+        self.anim3.setStartValue(0)
+        self.anim3.setEndValue(255)
+        self.anim3.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.anim3.setLoopCount(-1)
+
+        # Group animations and add delays for a wave effect
+        self.animation_group = QParallelAnimationGroup(self)
+        self.animation_group.addAnimation(self.anim1)
+        self.animation_group.addAnimation(self.anim2)
+        self.animation_group.addAnimation(self.anim3)
+
+        # Stagger the start times
+        self.anim2.setStartDelay(150)
+        self.anim3.setStartDelay(300)
+
+        self.hide() # Initially hidden
+
+    # Define properties for animation targets
+    @pyqtProperty(int)
+    def opacity1(self):
+        return self._opacity1
+
+    @opacity1.setter
+    def opacity1(self, value):
+        self._opacity1 = value
+        self.update()
+
+    @pyqtProperty(int)
+    def opacity2(self):
+        return self._opacity2
+
+    @opacity2.setter
+    def opacity2(self, value):
+        self._opacity2 = value
+        self.update()
+
+    @pyqtProperty(int)
+    def opacity3(self):
+        return self._opacity3
+
+    @opacity3.setter
+    def opacity3(self, value):
+        self._opacity3 = value
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        dot_y = self.height() // 2
+        dot_radius = 6
+        dot_spacing = 20
+
+        painter.setBrush(QColor(150, 150, 150, self._opacity1))
+        painter.drawEllipse(self.width() // 2 - dot_spacing, dot_y - dot_radius // 2, dot_radius, dot_radius)
+
+        painter.setBrush(QColor(150, 150, 150, self._opacity2))
+        painter.drawEllipse(self.width() // 2, dot_y - dot_radius // 2, dot_radius, dot_radius)
+
+        painter.setBrush(QColor(150, 150, 150, self._opacity3))
+        painter.drawEllipse(self.width() // 2 + dot_spacing, dot_y - dot_radius // 2, dot_radius, dot_radius)
+
+    def start_animation(self):
+        self.show()
+        self.animation_group.start()
+
+    def stop_animation(self):
+        self.animation_group.stop()
+        self.hide()
+
 # --- Main Application ---
 class GScapy(QMainWindow):
     """The main application window, holding all UI elements and logic."""
@@ -1189,6 +1313,7 @@ class GScapy(QMainWindow):
         self.sniffer_packet_buffer = []
         self.sniffer_buffer_lock = Lock()
         self.super_scan_active = False
+        self.ai_streaming_active = False
 
         self.nmap_script_presets = {
             "HTTP Service Info": ("http-title,http-headers", "", "Gathers the title and headers from web servers."),
@@ -1300,7 +1425,7 @@ class GScapy(QMainWindow):
         logging.info(f"Sent {tool_name} results to AI Assistant tab.")
 
     def _run_ai_task(self, prompt):
-        """Helper function to run a generic AI analysis task."""
+        """Helper function to run a generic AI analysis task with streaming."""
         settings_file = "ai_settings.json"
         try:
             if not os.path.exists(settings_file):
@@ -1352,55 +1477,72 @@ class GScapy(QMainWindow):
             self._append_ai_message(f"Error loading AI settings: {e}", is_user=False, is_error=True)
             return
 
-        self.ai_status_label.show()
+        self.ai_streaming_active = True
+        self.ai_first_chunk = True
+        self.typing_indicator.start_animation()
+
         self.ai_thread = AIAnalysisThread(endpoint, model, prompt, headers, self)
+        self.ai_thread.analysis_chunk_received.connect(self._on_ai_analysis_chunk)
         self.ai_thread.analysis_complete.connect(self._on_ai_analysis_complete)
         self.ai_thread.analysis_error.connect(self._on_ai_analysis_error)
-        self.ai_thread.finished.connect(self.ai_status_label.hide)
         self.ai_thread.finished.connect(self.ai_thread.deleteLater)
         self.ai_thread.start()
 
-    def _on_ai_analysis_complete(self, response):
-        self._append_ai_message(response, is_user=False)
-
-    def _on_ai_analysis_error(self, error_message):
-        self._append_ai_message(error_message, is_user=False, is_error=True)
-
-    def _append_ai_message(self, content, is_user, is_status=False, is_error=False, is_suggestion=False):
-        # Remove the "Querying..." status message before adding the real response
-        if not is_status and not is_user:
+    def _on_ai_analysis_chunk(self, chunk):
+        """Handles a chunk of text from the streaming AI response."""
+        if self.ai_first_chunk:
+            self.ai_first_chunk = False
+            self.typing_indicator.stop_animation()
+            self._append_ai_message(chunk, is_user=False) # Create the bubble with the first chunk
+        else:
+            # Append subsequent chunks to the existing text block
             cursor = self.ai_chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
-            cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
-            if "<i>Querying AI... Please wait.</i>" in cursor.selectedText():
-                cursor.removeSelectedText()
-                cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor)
-                if "<b>AI Assistant:</b>" in cursor.selection().toHtml():
-                    cursor.removeSelectedText()
+            # The content is inside a div, so we need to move inside it before inserting text
+            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.MoveAnchor, 7) # Move before </div>
+            cursor.insertText(chunk.replace(os.linesep, '<br>'))
 
-        # Define bubble styles
-        user_style = "background-color: #3d5a80; color: #f0f0f0; border-radius: 15px; padding: 10px; margin: 5px 50px 5px 5px; text-align: right;"
-        ai_style = "background-color: #4CAF50; color: white; border-radius: 15px; padding: 10px; margin: 5px 5px 5px 50px; text-align: left;"
-        error_style = "background-color: #d32f2f; color: white; border-radius: 15px; padding: 10px; margin: 5px 5px 5px 50px;"
-        status_style = "color: #aaa; text-align: center; margin: 10px;"
-        suggestion_style = "background-color: #424242; color: #e0e0e0; border: 1px solid #616161; border-radius: 15px; padding: 8px; margin: 5px 20%; text-align: center;"
+        self.ai_chat_history.verticalScrollBar().setValue(self.ai_chat_history.verticalScrollBar().maximum())
 
-        html = ""
+
+    def _on_ai_analysis_complete(self):
+        """Called when the AI stream is finished."""
+        self.ai_streaming_active = False
+        self.typing_indicator.stop_animation()
+        self.send_button.setEnabled(True)
+
+
+    def _on_ai_analysis_error(self, error_message):
+        """Handles errors from the AI thread."""
+        self.typing_indicator.stop_animation()
+        self._append_ai_message(error_message, is_user=False, is_error=True)
+        self.ai_streaming_active = False
+        self.send_button.setEnabled(True)
+
+
+    def _append_ai_message(self, content, is_user, is_error=False, is_suggestion=False):
+        # Gemini-inspired colors and styles
+        user_style = "background-color: #4f5159; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 10px 5px 80px;"
+        ai_style = "background-color: #3c4043; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
+        error_style = "background-color: #d32f2f; color: white; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
+        suggestion_style = "background-color: #3c4043; color: #e8eaed; border: 1px solid #5f6368; border-radius: 18px; padding: 10px; margin: 5px 25%; text-align: center;"
+
+        bubble_html = ""
         if is_user:
             align = 'right'
-            bubble_html = f"<div style='{user_style}'><b>You</b><br>{content.replace(os.linesep, '<br>')}</div>"
+            # Use a non-breaking space for the title to ensure the bubble has height even with no text
+            bubble_html = f"<div style='{user_style}'><b>You</b><br>{content.replace(os.linesep, '<br>') if content else '&nbsp;'}</div>"
         elif is_error:
             align = 'left'
             bubble_html = f"<div style='{error_style}'><b>AI Error</b><br>{content.replace(os.linesep, '<br>')}</div>"
-        elif is_status:
-            align = 'center'
-            bubble_html = f"<div style='{status_style}'>{content}</div>"
         elif is_suggestion:
             align = 'center'
             bubble_html = f"<div style='{suggestion_style}'><i>Suggestion: {content}</i></div>"
         else: # Regular AI message
             align = 'left'
-            bubble_html = f"<div style='{ai_style}'><b>AI Assistant</b><br>{content.replace(os.linesep, '<br>')}</div>"
+            # The initial content can be None/empty for streaming, so handle that
+            text = content.replace(os.linesep, '<br>') if content else "&nbsp;"
+            bubble_html = f"<div style='{ai_style}'><b>AI Assistant</b><br>{text}</div>"
 
         # The alignment div is crucial for QTextBrowser
         html = f"<div align='{align}'>{bubble_html}</div>"
@@ -1409,12 +1551,16 @@ class GScapy(QMainWindow):
         self.ai_chat_history.verticalScrollBar().setValue(self.ai_chat_history.verticalScrollBar().maximum())
 
     def _send_chat_message(self):
+        if self.ai_streaming_active:
+            return # Don't allow sending while AI is responding
+
         user_text = self.ai_input_text.toPlainText().strip()
         if not user_text:
             return
 
         self._append_ai_message(user_text, is_user=True)
         self.ai_input_text.clear()
+        self.send_button.setEnabled(False)
 
         self._run_ai_task(user_text)
 
@@ -2689,11 +2835,9 @@ class GScapy(QMainWindow):
         self.ai_chat_history.setOpenExternalLinks(True)
         chat_layout.addWidget(self.ai_chat_history, 1) # Add stretch factor
 
-        self.ai_status_label = QLabel("<i>Querying AI... Please wait.</i>")
-        self.ai_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.ai_status_label.setStyleSheet("color: #aaa;")
-        self.ai_status_label.hide()
-        chat_layout.addWidget(self.ai_status_label)
+        # Add the animated typing indicator
+        self.typing_indicator = TypingIndicator(self)
+        chat_layout.addWidget(self.typing_indicator)
 
         # --- Prompt Controls ---
         prompt_box = QGroupBox("Prompt Helper")
