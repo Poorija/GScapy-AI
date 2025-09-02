@@ -59,7 +59,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QInputDialog
 )
 from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer
-from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor
+from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
 
 
 def sniffer_process_target(queue, iface, bpf_filter):
