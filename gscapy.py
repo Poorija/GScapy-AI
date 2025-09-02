@@ -59,7 +59,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
     QHeaderView, QInputDialog
 )
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, pyqtProperty
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QParallelAnimationGroup, QSequentialAnimationGroup, QEasingCurve, pyqtProperty
 from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup, QPainter, QColor
 
 
@@ -1211,15 +1211,23 @@ class TypingIndicator(QWidget):
         self.anim3.setEasingCurve(QEasingCurve.Type.InOutQuad)
         self.anim3.setLoopCount(-1)
 
-        # Group animations and add delays for a wave effect
+        # Group animations using a parallel group
         self.animation_group = QParallelAnimationGroup(self)
-        self.animation_group.addAnimation(self.anim1)
-        self.animation_group.addAnimation(self.anim2)
-        self.animation_group.addAnimation(self.anim3)
 
-        # Stagger the start times
-        self.anim2.setStartDelay(150)
-        self.anim3.setStartDelay(300)
+        # Add the first animation directly
+        self.animation_group.addAnimation(self.anim1)
+
+        # Create a sequential group for the second animation to add a delay
+        seq_group2 = QSequentialAnimationGroup()
+        seq_group2.addPause(150)
+        seq_group2.addAnimation(self.anim2)
+        self.animation_group.addAnimation(seq_group2)
+
+        # Create a sequential group for the third animation to add a delay
+        seq_group3 = QSequentialAnimationGroup()
+        seq_group3.addPause(300)
+        seq_group3.addAnimation(self.anim3)
+        self.animation_group.addAnimation(seq_group3)
 
         self.hide() # Initially hidden
 
