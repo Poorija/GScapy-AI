@@ -59,7 +59,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
     QHeaderView, QInputDialog, QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup, QPoint
 from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
 
 
@@ -1218,6 +1218,147 @@ class AIGuideDialog(QDialog):
         ok_button = QPushButton("OK")
         ok_button.clicked.connect(self.accept)
         layout.addWidget(ok_button, 0, Qt.AlignmentFlag.AlignRight)
+
+class TypingIndicator(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(40)
+        self.dots = []
+        self.animations = QParallelAnimationGroup(self)
+
+        for i in range(3):
+            dot = QLabel("●", self)
+            dot.setStyleSheet("color: #909090; font-size: 20px;")
+            self.dots.append(dot)
+
+            anim = QPropertyAnimation(dot, b"pos")
+            anim.setDuration(400)
+            anim.setStartValue(QPoint(20 + i * 20, 20))
+            anim.setEndValue(QPoint(20 + i * 20, 10))
+            anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+            reverse_anim = QPropertyAnimation(dot, b"pos")
+            reverse_anim.setDuration(400)
+            reverse_anim.setStartValue(QPoint(20 + i * 20, 10))
+            reverse_anim.setEndValue(QPoint(20 + i * 20, 20))
+            reverse_anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+            seq = QSequentialAnimationGroup()
+            seq.addPause(i * 150)
+            seq.addAnimation(anim)
+            seq.addAnimation(reverse_anim)
+            seq.setLoopCount(-1) # Loop indefinitely
+            self.animations.addAnimation(seq)
+
+    def start_animation(self):
+        self.animations.start()
+
+    def stop_animation(self):
+        self.animations.stop()
+
+class ThinkingWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.is_expanded = True
+        self._init_ui()
+
+    def _init_ui(self):
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        self.header_frame = QFrame()
+        self.header_frame.setStyleSheet("background-color: #f0f0f0; border-radius: 5px;")
+        header_layout = QHBoxLayout(self.header_frame)
+
+        self.toggle_button = QPushButton("Thinking...")
+        self.toggle_button.setStyleSheet("border: none; text-align: left; font-weight: bold;")
+        self.toggle_button.clicked.connect(self.toggle_content)
+
+        self.arrow_label = QLabel("\u25BC") # Down-pointing arrow
+        self.arrow_label.setStyleSheet("border: none;")
+
+        header_layout.addWidget(self.toggle_button)
+        header_layout.addStretch()
+        header_layout.addWidget(self.arrow_label)
+
+        self.content_widget = QTextEdit()
+        self.content_widget.setReadOnly(True)
+        self.content_widget.setStyleSheet("background-color: #f7f7f7; border: 1px solid #e0e0e0; border-top: none; border-radius: 5px;")
+
+        self.main_layout.addWidget(self.header_frame)
+        self.main_layout.addWidget(self.content_widget)
+        self.adjustSize()
+
+    def toggle_content(self):
+        self.is_expanded = not self.is_expanded
+        self.content_widget.setVisible(self.is_expanded)
+        self.arrow_label.setText("\u25BC" if self.is_expanded else "\u25B6")
+
+        # We need to inform the list view that our size has changed.
+        # A simple way is to update the geometry of the top-level widget.
+        if self.parentWidget():
+            self.parentWidget().updateGeometry()
+            # Find the QListWidgetItem this widget belongs to and update its size hint
+            for i in range(self.parentWidget().count()):
+                item = self.parentWidget().item(i)
+                widget = self.parentWidget().itemWidget(item)
+                if widget is self:
+                    item.setSizeHint(self.sizeHint())
+                    break
+
+    def append_text(self, text):
+        self.content_widget.append(text)
+        self.adjustSize()
+        if self.parentWidget():
+             self.parentWidget().updateGeometry()
+
+    def is_collapsed(self):
+        return not self.is_expanded
+
+class ChatBubble(QWidget):
+    def __init__(self, text, is_user, is_streaming=False, parent=None):
+        super().__init__(parent)
+        self.is_user = is_user
+        self.is_streaming = is_streaming
+
+        self.layout = QVBoxLayout(self)
+        self.label = QLabel(text)
+        self.label.setWordWrap(True)
+        self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        self.layout.addWidget(self.label)
+        self.set_stylesheet()
+
+    def set_stylesheet(self):
+        if self.is_user:
+            self.label.setStyleSheet("""
+                background-color: #3d5a80;
+                color: white;
+                padding: 10px;
+                border-radius: 15px;
+            """)
+            self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        else:
+            bg_color = "#E5E5EA" # Final color
+            if self.is_streaming:
+                bg_color = "#F5F5F5" # Lighter color while streaming
+            self.label.setStyleSheet(f"""
+                background-color: {bg_color};
+                color: black;
+                padding: 10px;
+                border-radius: 15px;
+            """)
+            self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+    def append_text(self, text_chunk):
+        current_text = self.label.text()
+        self.label.setText(current_text + text_chunk)
+        self.adjustSize()
+
+    def finish_streaming(self):
+        self.is_streaming = False
+        self.set_stylesheet()
 
 class AIAssistantTab(QWidget):
     def __init__(self, parent=None):
