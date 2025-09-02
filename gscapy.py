@@ -55,12 +55,12 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QStatusBar, QMenuBar, QTabWidget, QWidget,
     QVBoxLayout, QLabel, QDockWidget, QPlainTextEdit, QPushButton, QHBoxLayout,
     QTreeWidget, QTreeWidgetItem, QSplitter, QFileDialog, QMessageBox, QComboBox,
-    QListWidget, QScrollArea, QLineEdit, QCheckBox, QFrame, QMenu, QTextEdit, QGroupBox,
+    QListWidget, QListWidgetItem, QScrollArea, QLineEdit, QCheckBox, QFrame, QMenu, QTextEdit, QGroupBox,
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
-    QHeaderView, QInputDialog
+    QHeaderView, QInputDialog, QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QParallelAnimationGroup, QSequentialAnimationGroup, QEasingCurve, pyqtProperty
-from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup, QPainter, QColor
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup
+from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
 
 
 def sniffer_process_target(queue, iface, bpf_filter):
@@ -992,11 +992,178 @@ class AISettingsDialog(QDialog):
         QMessageBox.warning(self, "Connection Failed", message)
 
 
+class TypingIndicator(QWidget):
+    """A widget that displays an animated typing indicator (three dots)."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(40)
+        self.dots = []
+        self.animations = QParallelAnimationGroup(self)
+
+        for i in range(3):
+            dot = QLabel("●", self)
+            dot.setStyleSheet("color: #888;")
+            self.dots.append(dot)
+
+            anim = QPropertyAnimation(dot, b"pos")
+            anim.setDuration(400)
+            anim.setStartValue(dot.pos())
+            anim.setEndValue(dot.pos() - QPoint(0, 10))
+            anim.setEasingCurve(QEasingCurve.Type.OutInQuad)
+
+            # Create a sequential group to move up and then back down
+            seq_group = QSequentialAnimationGroup()
+            seq_group.addPause(i * 150) # Stagger the start of each dot's animation
+            seq_group.addAnimation(anim)
+            seq_group.addAnimation(anim.clone()) # Add the reverse animation
+            anim.setDirection(QPropertyAnimation.Direction.Backward) # Set the second animation to go back down
+
+            seq_group.setLoopCount(-1) # Loop indefinitely
+            self.animations.addAnimation(seq_group)
+
+    def start_animation(self):
+        self.show()
+        self.animations.start()
+
+    def stop_animation(self):
+        self.animations.stop()
+        self.hide()
+
+    def resizeEvent(self, event):
+        # Center the dots within the widget
+        total_width = sum(dot.width() for dot in self.dots) + 10 * 2
+        start_x = (self.width() - total_width) // 2
+        for i, dot in enumerate(self.dots):
+            dot.move(start_x + i * (dot.width() + 10), 20)
+
+
+class ThinkingWidget(QFrame):
+    """A collapsible widget to show the AI's 'thinking' process."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet("""
+            ThinkingWidget {
+                border: 1px solid #4a90e2;
+                border-radius: 8px;
+                background-color: #262a33;
+                margin: 5px 50px 5px 5px;
+            }
+        """)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(0)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Header (button to collapse/expand)
+        self.header_button = QPushButton("  🤔 Thinking...")
+        self.header_button.setStyleSheet("""
+            QPushButton {
+                background-color: #303540;
+                border: none;
+                padding: 8px;
+                text-align: left;
+                font-weight: bold;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+            }
+        """)
+        self.header_button.clicked.connect(self.toggle_content)
+        self.main_layout.addWidget(self.header_button)
+
+        # Content area
+        self.content_area = QTextEdit()
+        self.content_area.setReadOnly(True)
+        self.content_area.setStyleSheet("""
+            QTextEdit {
+                border: none;
+                background-color: #262a33;
+                padding: 10px;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }
+        """)
+        self.main_layout.addWidget(self.content_area)
+        self.is_expanded = True
+
+    def toggle_content(self):
+        self.is_expanded = not self.is_expanded
+        self.content_area.setVisible(self.is_expanded)
+
+    def append_text(self, text):
+        self.content_area.insertPlainText(text)
+        self.content_area.verticalScrollBar().setValue(self.content_area.verticalScrollBar().maximum())
+
+    def get_full_text(self):
+        return self.content_area.toPlainText()
+
+
+class ChatBubble(QFrame):
+    """A styled chat bubble widget for displaying messages."""
+    def __init__(self, text, is_user=False, is_error=False, parent=None):
+        super().__init__(parent)
+        self.is_user = is_user
+        self.is_error = is_error
+
+        # Set style based on message type
+        if is_user:
+            style = "background-color: #3d5a80; color: #f0f0f0; margin-right: 50px;"
+            align = Qt.AlignmentFlag.AlignRight
+        elif is_error:
+            style = "background-color: #d32f2f; color: white; margin-left: 50px;"
+            align = Qt.AlignmentFlag.AlignLeft
+        else: # AI message
+            style = "background-color: #4CAF50; color: white; margin-left: 50px;"
+            align = Qt.AlignmentFlag.AlignLeft
+
+        self.setStyleSheet(f"""
+            ChatBubble {{
+                {style}
+                border-radius: 15px;
+                padding: 1px;
+            }}
+        """)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(12, 12, 12, 12)
+
+        self.text_label = QTextEdit()
+        self.text_label.setReadOnly(True)
+        self.text_label.setHtml(text)
+        self.text_label.setStyleSheet("background: transparent; border: none;")
+        # Disable scrollbars and let the bubble resize instead
+        self.text_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.text_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.text_label.document().contentsChanged.connect(self.update_size)
+
+        self.layout.addWidget(self.text_label)
+
+    def update_size(self):
+        # Adjust the height of the QTextEdit to fit its content
+        doc_height = self.text_label.document().size().height()
+        self.text_label.setFixedHeight(int(doc_height) + 5) # Add a small margin
+
+    def append_text(self, text_chunk):
+        # Append text and ensure the view scrolls to the new content
+        cursor = self.text_label.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text_chunk)
+        self.text_label.ensureCursorVisible()
+
+    def get_full_text(self):
+        return self.text_label.toPlainText()
+
+    def set_text(self, text):
+        self.text_label.setPlainText(text)
+
+
 class AIAnalysisThread(QThread):
-    """A thread to run AI analysis requests in the background, supporting streaming."""
-    analysis_chunk_received = pyqtSignal(str)
-    analysis_complete = pyqtSignal() # Now signals completion without content
-    analysis_error = pyqtSignal(str)
+    """A thread to run AI analysis requests with support for streaming."""
+    thinking_started = pyqtSignal(str)
+    thinking_updated = pyqtSignal(str)
+    answer_started = pyqtSignal()
+    answer_updated = pyqtSignal(str)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
 
     def __init__(self, endpoint, model, prompt, headers=None, parent=None):
         super().__init__(parent)
@@ -1008,48 +1175,71 @@ class AIAnalysisThread(QThread):
 
     def run(self):
         try:
+            import requests
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": self.prompt}],
-                "stream": True # Enable streaming
+                "stream": True,
+                "options": {"temperature": 0.5}
             }
-            import requests
-            response = requests.post(self.endpoint, json=payload, headers=self.headers, timeout=60, stream=True)
-            response.raise_for_status()
 
-            # Handle streaming response
-            for line in response.iter_lines():
-                if self.stop_event.is_set():
-                    break
-                if line:
+            with requests.post(self.endpoint, json=payload, headers=self.headers, stream=True, timeout=120) as response:
+                response.raise_for_status()
+
+                # State machine: 0=Waiting, 1=Thinking, 2=Answering
+                state = 0
+                buffer = ""
+
+                for chunk in response.iter_lines():
+                    if self.stop_event.is_set():
+                        break
+                    if not chunk:
+                        continue
+
                     try:
-                        json_line = line.decode('utf-8')
-                        data = json.loads(json_line)
+                        data = json.loads(chunk)
+                        # Extract content based on API format (OpenAI/Ollama vs. others)
+                        content_part = data.get("message", {}).get("content", "")
+                        if not content_part:
+                            content_part = data.get("response", "") # Fallback for non-message format
 
-                        # Structure for Ollama streaming
-                        content_chunk = data.get("message", {}).get("content", "")
-                        # Fallback for other streaming APIs (e.g., OpenAI-like)
-                        if not content_chunk:
-                           content_chunk = data.get("response", "") # e.g. older ollama
-                        if not content_chunk:
-                           content_chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        buffer += content_part
 
+                        # Process buffer for special tokens
+                        while '[THINKING]' in buffer:
+                            parts = buffer.split('[THINKING]', 1)
+                            if state == 2: # Was answering, now thinking again
+                                self.thinking_updated.emit(parts[0])
+                            buffer = parts[1]
+                            if state != 1:
+                                self.thinking_started.emit("")
+                                state = 1
 
-                        if content_chunk:
-                            self.analysis_chunk_received.emit(content_chunk)
+                        while '[ANSWER]' in buffer:
+                            parts = buffer.split('[ANSWER]', 1)
+                            if state == 1: # Was thinking
+                                self.thinking_updated.emit(parts[0])
+                            buffer = parts[1]
+                            if state != 2:
+                                self.answer_started.emit()
+                                state = 2
+
+                        # Emit the remaining part of the buffer based on current state
+                        if state == 1:
+                            self.thinking_updated.emit(buffer)
+                        elif state == 2:
+                            self.answer_updated.emit(buffer)
+                        buffer = "" # Clear buffer after processing
 
                     except json.JSONDecodeError:
-                        logging.warning(f"Could not decode JSON from stream line: {line}")
+                        logging.warning(f"Could not decode JSON chunk: {chunk}")
                         continue
-                    except Exception as e:
-                        logging.error(f"Error processing stream line: {e}")
-
-            self.analysis_complete.emit()
-
         except Exception as e:
             error_message = f"Failed to get AI analysis: {e}"
             logging.error(error_message, exc_info=True)
-            self.analysis_error.emit(error_message)
+            self.error.emit(error_message)
+        finally:
+            self.finished.emit()
 
     def stop(self):
         self.stop_event.set()
@@ -1178,113 +1368,6 @@ class AIGuideDialog(QDialog):
         ok_button.clicked.connect(self.accept)
         layout.addWidget(ok_button, 0, Qt.AlignmentFlag.AlignRight)
 
-class TypingIndicator(QWidget):
-    """A widget that displays an animated 'typing' indicator with three pulsing dots."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMinimumHeight(40)
-        self._opacity1 = 0
-        self._opacity2 = 0
-        self._opacity3 = 0
-
-        # Animation for the first dot
-        self.anim1 = QPropertyAnimation(self, b"opacity1")
-        self.anim1.setDuration(1200)
-        self.anim1.setStartValue(0)
-        self.anim1.setEndValue(255)
-        self.anim1.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        self.anim1.setLoopCount(-1) # Loop indefinitely
-
-        # Animation for the second dot
-        self.anim2 = QPropertyAnimation(self, b"opacity2")
-        self.anim2.setDuration(1200)
-        self.anim2.setStartValue(0)
-        self.anim2.setEndValue(255)
-        self.anim2.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        self.anim2.setLoopCount(-1)
-
-        # Animation for the third dot
-        self.anim3 = QPropertyAnimation(self, b"opacity3")
-        self.anim3.setDuration(1200)
-        self.anim3.setStartValue(0)
-        self.anim3.setEndValue(255)
-        self.anim3.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        self.anim3.setLoopCount(-1)
-
-        # Group animations using a parallel group
-        self.animation_group = QParallelAnimationGroup(self)
-
-        # Add the first animation directly
-        self.animation_group.addAnimation(self.anim1)
-
-        # Create a sequential group for the second animation to add a delay
-        seq_group2 = QSequentialAnimationGroup()
-        seq_group2.addPause(150)
-        seq_group2.addAnimation(self.anim2)
-        self.animation_group.addAnimation(seq_group2)
-
-        # Create a sequential group for the third animation to add a delay
-        seq_group3 = QSequentialAnimationGroup()
-        seq_group3.addPause(300)
-        seq_group3.addAnimation(self.anim3)
-        self.animation_group.addAnimation(seq_group3)
-
-        self.hide() # Initially hidden
-
-    # Define properties for animation targets
-    @pyqtProperty(int)
-    def opacity1(self):
-        return self._opacity1
-
-    @opacity1.setter
-    def opacity1(self, value):
-        self._opacity1 = value
-        self.update()
-
-    @pyqtProperty(int)
-    def opacity2(self):
-        return self._opacity2
-
-    @opacity2.setter
-    def opacity2(self, value):
-        self._opacity2 = value
-        self.update()
-
-    @pyqtProperty(int)
-    def opacity3(self):
-        return self._opacity3
-
-    @opacity3.setter
-    def opacity3(self, value):
-        self._opacity3 = value
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-
-        dot_y = self.height() // 2
-        dot_radius = 6
-        dot_spacing = 20
-
-        painter.setBrush(QColor(150, 150, 150, self._opacity1))
-        painter.drawEllipse(self.width() // 2 - dot_spacing, dot_y - dot_radius // 2, dot_radius, dot_radius)
-
-        painter.setBrush(QColor(150, 150, 150, self._opacity2))
-        painter.drawEllipse(self.width() // 2, dot_y - dot_radius // 2, dot_radius, dot_radius)
-
-        painter.setBrush(QColor(150, 150, 150, self._opacity3))
-        painter.drawEllipse(self.width() // 2 + dot_spacing, dot_y - dot_radius // 2, dot_radius, dot_radius)
-
-    def start_animation(self):
-        self.show()
-        self.animation_group.start()
-
-    def stop_animation(self):
-        self.animation_group.stop()
-        self.hide()
-
 # --- Main Application ---
 class GScapy(QMainWindow):
     """The main application window, holding all UI elements and logic."""
@@ -1321,7 +1404,10 @@ class GScapy(QMainWindow):
         self.sniffer_packet_buffer = []
         self.sniffer_buffer_lock = Lock()
         self.super_scan_active = False
-        self.ai_streaming_active = False
+        self.current_thinking_widget = None
+        self.current_ai_bubble = None
+        self.current_typing_indicator = None
+        self.ai_thread = None
 
         self.nmap_script_presets = {
             "HTTP Service Info": ("http-title,http-headers", "", "Gathers the title and headers from web servers."),
@@ -1432,13 +1518,164 @@ class GScapy(QMainWindow):
         self.tab_widget.setCurrentWidget(self.ai_assistant_tab)
         logging.info(f"Sent {tool_name} results to AI Assistant tab.")
 
-    def _run_ai_task(self, prompt):
-        """Helper function to run a generic AI analysis task with streaming."""
+    def _create_ai_assistant_tab(self):
+        """Creates the UI for the AI Assistant chat tab with a side-by-side layout."""
+        widget = QWidget()
+        main_layout = QHBoxLayout(widget)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # --- Left Pane: Prompt Library ---
+        self.ai_prompts = {
+            "Threat Detection & Analysis": {
+                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
+                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
+                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
+                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
+                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
+                "Scan Database Logs for Breaches": "Scan the following database logs and identify any unauthorized access attempts or unusual data queries. Look for queries from unexpected IP addresses, unusually large data exports, or repeated failed login attempts.",
+                "Detect DNS Hijacking": "Analyze the following DNS traffic and detect any signs of domain hijacking or DNS poisoning. Look for unexpected responses to DNS queries or traffic being redirected to suspicious IP addresses.",
+                "Identify Network Misconfigurations": "Perform a vulnerability scan on the following list of network devices and identify any potential weaknesses or misconfigurations, such as open management ports, default credentials, or outdated firmware.",
+                "Detect Data Exfiltration": "Analyze the following network traffic patterns to detect any large data exfiltration or unusual data transfers. Look for large, encrypted uploads to external sites or sustained outbound connections.",
+                "Identify Brute-Force Attacks": "Monitor the following system login attempts and identify any brute-force attacks or login anomalies. Look for a high volume of failed logins from a single IP or for a single user account.",
+            },
+            "Incident Response": {
+                "Fuzz for XML Files with Gobuster": "How can I fuzz for .xml files on a web server at {TARGET_URL} using gobuster?",
+                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
+                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
+                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
+                "Forensic Analysis Guide": "Assist in performing a forensic analysis on a compromised Linux system to identify the incident’s root cause. What are the first 5 steps I should take?",
+                "Coordinate IR Team Communication": "Act as a facilitator for communication and collaboration among incident response team members during a major security incident. What are the key pieces of information to share?",
+                "Contain a Spreading Malware": "Recommend and execute incident containment measures to minimize further damage from a malware infection that is spreading across the corporate network.",
+                "Generate Incident Report": "Assist in generating an incident response report with detailed timelines, actions taken, and lessons learned from the provided data.",
+                "Engage Law Enforcement": "Guide an incident response team through the process of notifying and engaging law enforcement agencies for a cybercrime event.",
+                "Post-Incident Review Guide": "Assist in conducting a post-incident review to identify vulnerabilities and improve incident response procedures after a data breach.",
+            },
+            "Vulnerability Assessment & PenTesting": {
+                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
+                "Simulate Phishing Campaign": "I need to simulate a phishing campaign targeting employees to assess their susceptibility and raise awareness. Provide three different email templates for this.",
+                "Penetration Test Web Application": "Perform a penetration test on the following web application description to identify potential security flaws and suggest remediation measures. The application is a customer portal at {TARGET_URL}.",
+                "Secure Wireless Network": "Analyze the following wireless network configuration and recommend security enhancements to prevent unauthorized access. The current setup uses WPA2-PSK with a known weak password.",
+                "Harden Web Server": "Review the following Nginx server configuration and recommend hardening measures to protect against known vulnerabilities and exploits.",
+                "Evaluate Physical Security": "Assess the effectiveness of physical security controls by simulating unauthorized access attempts to a restricted data center. What are common techniques to test?",
+                "Test DDoS Resilience": "Evaluate the resilience of our network infrastructure against a DDoS attack. Propose three different mitigation strategies we could implement.",
+                "Assess IoT Device Security": "Conduct a vulnerability assessment on an IoT camera at IP {TARGET_IP}. Identify potential entry points for attackers and recommend security measures.",
+                "Audit Third-Party Vendor Security": "Assess the security posture of a third-party vendor by conducting a security audit. Provide a checklist of the top 10 things to review.",
+                "Review Incident Response Plan": "Review our organization’s incident response plan and simulate a ransomware attack scenario to identify areas for improvement.",
+                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
+                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
+                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
+                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
+                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
+            },
+            "Scripting & Automation": {
+                "Generate Nmap Port Scan Script": "Generate a bash script that automates port scanning with Nmap for a list of IPs in a file named 'targets.txt' and saves the output for each IP.",
+                "Create Python Scapy Script": "Write a Python script using Scapy to send a TCP SYN packet to port 80 of a target IP address and print whether the port is open or closed.",
+                "Automate Log Analysis with Python": "Write a Python script to parse an Apache access log file and identify the top 10 IP addresses with the most requests.",
+                "PowerShell for User Audit": "Write a PowerShell script to audit all local user accounts on a Windows machine and flag any that have not been logged into for over 90 days.",
+                "Bash Script to Check for Open Ports": "Create a simple bash script that uses 'netcat' to check if a specific port is open on a given host.",
+                "Detect Registry Changes with ELK": "Provide an ELK query to detect changes in the Windows Registry, specifically focusing on keys related to startup programs.",
+                "Python Script to Detect XSS": "Write a Python script that takes a URL as input and checks for basic reflected XSS vulnerabilities by testing common payloads in URL parameters.",
+                "Automate Subdomain Enumeration": "Create a bash script that chains together 'subfinder' and 'httpx' to find live subdomains for a given domain.",
+                "PowerShell to Disable Inactive Accounts": "Write a PowerShell script for Active Directory that finds user accounts that have been inactive for 60 days and disables them.",
+                "Python Script for Password Strength": "Write a Python script that takes a password as input and rates its strength based on length, and inclusion of uppercase, lowercase, numbers, and symbols.",
+            },
+            "Policy & Compliance": {
+                "Draft Data Protection Policy": "Provide guidance on drafting a data protection and privacy policy in accordance with GDPR for a small e-commerce company.",
+                "Update Security Policies": "Review the following (outdated) security policy and suggest updates to align with modern industry best practices and the evolving threat landscape.",
+                "Develop Password Management Policy": "Assist in developing a password management policy that promotes strong, unique passwords and the use of multi-factor authentication (MFA).",
+                "Create Mobile Device Policy (BYOD)": "Offer recommendations for creating a mobile device management policy (MDM) to secure employee-owned devices (BYOD) and protect corporate data.",
+                "Establish Network Access Control Policy": "Assist in establishing a network access control (NAC) policy to ensure only authorized and compliant devices can connect to the organization’s network.",
+                "Outline Incident Response Policy": "Provide guidance on creating an incident response policy that clearly outlines roles, responsibilities, communication channels, and escalation procedures.",
+                "Define Patch Management Policy": "Help define a patch management policy that ensures timely updates and vulnerability remediation across all systems and software, with a focus on critical assets.",
+                "Develop Encryption Policy": "Assist in developing a data encryption policy to protect sensitive data at rest and in transit, specifying required algorithms and key management procedures.",
+                "Create Employee Training Policy": "Guide the creation of an employee security training and awareness policy to promote a security-conscious culture within the organization.",
+                "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
+            },
+        }
+        self.prompt_tree = QTreeWidget()
+        self.prompt_tree.setHeaderHidden(True)
+        self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
+        for category, prompts in self.ai_prompts.items():
+            category_item = QTreeWidgetItem(self.prompt_tree, [category])
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            font = category_item.font(0); font.setBold(True); category_item.setFont(0, font)
+            for prompt_name, prompt_text in prompts.items():
+                prompt_item = QTreeWidgetItem(category_item, [prompt_name])
+                prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text)
+                prompt_item.setToolTip(0, prompt_text)
+        splitter.addWidget(self.prompt_tree)
+
+        # --- Right Pane: Chat Interface ---
+        chat_container = QWidget()
+        chat_layout = QVBoxLayout(chat_container)
+
+        # Chat history area
+        self.chat_scroll_area = QScrollArea()
+        self.chat_scroll_area.setWidgetResizable(True)
+        self.chat_scroll_area.setStyleSheet("QScrollArea { border: none; }")
+        self.chat_widget = QWidget()
+        self.chat_layout = QVBoxLayout(self.chat_widget)
+        self.chat_layout.addStretch()
+        self.chat_scroll_area.setWidget(self.chat_widget)
+        chat_layout.addWidget(self.chat_scroll_area)
+
+        # --- Input & Send ---
+        input_layout = QHBoxLayout()
+        self.ai_input_text = QTextEdit()
+        self.ai_input_text.setPlaceholderText("Enter your message, paste data, or select a prompt from the left...")
+        self.ai_input_text.setFixedHeight(100)
+        input_layout.addWidget(self.ai_input_text)
+
+        button_vbox = QVBoxLayout()
+        self.send_button = QPushButton("Send")
+        self.send_button.setToolTip("Send the message to the AI")
+        self.send_button.clicked.connect(self._send_chat_message)
+        self.ai_settings_btn = QPushButton()
+        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
+        self.ai_settings_btn.setToolTip("Configure AI Models")
+        self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
+        button_vbox.addWidget(self.send_button)
+        button_vbox.addWidget(self.ai_settings_btn)
+        input_layout.addLayout(button_vbox)
+        chat_layout.addLayout(input_layout)
+        splitter.addWidget(chat_container)
+
+        splitter.setSizes([300, 700])
+        return widget
+
+    def _add_widget_to_chat(self, widget):
+        """Helper to add a widget to the chat layout and scroll to it."""
+        # Insert before the stretch item
+        self.chat_layout.insertWidget(self.chat_layout.count() - 1, widget)
+        QApplication.processEvents() # Allow the UI to update
+        self.chat_scroll_area.verticalScrollBar().setValue(
+            self.chat_scroll_area.verticalScrollBar().maximum()
+        )
+
+    def _send_chat_message(self):
+        user_text = self.ai_input_text.toPlainText().strip()
+        if not user_text or (self.ai_thread and self.ai_thread.isRunning()):
+            return
+
+        self.ai_input_text.clear()
+        user_bubble = ChatBubble(user_text, is_user=True)
+        self._add_widget_to_chat(user_bubble)
+
+        # Show typing indicator
+        if self.current_typing_indicator:
+            self.current_typing_indicator.start_animation()
+        else:
+            self.current_typing_indicator = TypingIndicator()
+            self._add_widget_to_chat(self.current_typing_indicator)
+            self.current_typing_indicator.start_animation()
+
+        # Load settings and run thread
         settings_file = "ai_settings.json"
         try:
             if not os.path.exists(settings_file):
-                QMessageBox.warning(self, "Configuration Needed", "AI settings not found. Please configure the AI provider from the Help > AI Settings menu.")
-                if self._show_ai_settings_dialog() == QDialog.DialogCode.Rejected: return
+                self._on_ai_error("AI settings not found. Please configure from Help > AI Settings.")
+                return
 
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
@@ -1450,131 +1687,89 @@ class GScapy(QMainWindow):
             model = active_model
 
             if not active_provider or not active_model:
-                self._append_ai_message("No active AI model selected. Please click the gear icon to choose a configured model.", is_user=False, is_error=True)
+                self._on_ai_error("No active AI model selected. Please click the gear icon to choose one.")
                 return
 
-            logging.info(f"Running AI task with provider '{active_provider}' and model '{active_model}'")
-
             if active_provider == "local_ai":
-                provider_settings = settings.get("local_ai", {})
-                endpoint = provider_settings.get("endpoint")
-                if not endpoint:
-                    self._append_ai_message("Local AI provider is active, but the endpoint is not configured in Advanced Settings.", is_user=False, is_error=True)
-                    return
-            else: # It's an online service
-                online_settings = settings.get("online_ai", {})
-                provider_data = online_settings.get(active_provider, {})
+                endpoint = settings.get("local_ai", {}).get("endpoint")
+            else:
+                provider_data = settings.get("online_ai", {}).get(active_provider, {})
                 api_key = provider_data.get("api_key")
-
-                if not api_key:
-                    self._append_ai_message(f"API Key for the active provider ({active_provider}) is required. Please set it in Advanced AI Settings.", is_user=False, is_error=True)
-                    return
-
                 if active_provider == "OpenAI":
                     endpoint = "https://api.openai.com/v1/chat/completions"
                     headers["Authorization"] = f"Bearer {api_key}"
-                else:
-                    self._append_ai_message(f"The online provider '{active_provider}' is not yet supported for sending messages.", is_user=False, is_error=True)
-                    return
 
-            if not endpoint or not model:
-                self._append_ai_message(f"Could not find valid endpoint or model name for the active provider '{active_provider}'. Please check configuration in Advanced Settings.", is_user=False, is_error=True)
+            if not endpoint:
+                self._on_ai_error(f"Endpoint for '{active_provider}' is not configured.")
                 return
 
+            self.ai_thread = AIAnalysisThread(endpoint, model, user_text, headers, self)
+            self.ai_thread.thinking_started.connect(self._on_ai_thinking_started)
+            self.ai_thread.thinking_updated.connect(self._on_ai_thinking_updated)
+            self.ai_thread.answer_started.connect(self._on_ai_answer_started)
+            self.ai_thread.answer_updated.connect(self._on_ai_answer_updated)
+            self.ai_thread.finished.connect(self._on_ai_finished)
+            self.ai_thread.error.connect(self._on_ai_error)
+            self.ai_thread.start()
+
         except Exception as e:
-            self._append_ai_message(f"Error loading AI settings: {e}", is_user=False, is_error=True)
-            return
+            self._on_ai_error(f"Failed to start AI task: {e}")
 
-        self.ai_streaming_active = True
-        self.ai_first_chunk = True
-        self.typing_indicator.start_animation()
+    def _on_ai_thinking_started(self, initial_content):
+        if self.current_typing_indicator:
+            self.current_typing_indicator.stop_animation()
+        self.current_thinking_widget = ThinkingWidget()
+        self.current_thinking_widget.append_text(initial_content)
+        self._add_widget_to_chat(self.current_thinking_widget)
 
-        self.ai_thread = AIAnalysisThread(endpoint, model, prompt, headers, self)
-        self.ai_thread.analysis_chunk_received.connect(self._on_ai_analysis_chunk)
-        self.ai_thread.analysis_complete.connect(self._on_ai_analysis_complete)
-        self.ai_thread.analysis_error.connect(self._on_ai_analysis_error)
-        self.ai_thread.finished.connect(self.ai_thread.deleteLater)
-        self.ai_thread.start()
+    def _on_ai_thinking_updated(self, content_chunk):
+        if self.current_thinking_widget:
+            self.current_thinking_widget.append_text(content_chunk)
 
-    def _on_ai_analysis_chunk(self, chunk):
-        """Handles a chunk of text from the streaming AI response."""
-        if self.ai_first_chunk:
-            self.ai_first_chunk = False
-            self.typing_indicator.stop_animation()
-            self._append_ai_message(chunk, is_user=False) # Create the bubble with the first chunk
-        else:
-            # Append subsequent chunks to the existing text block
-            cursor = self.ai_chat_history.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)
-            # The content is inside a div, so we need to move inside it before inserting text
-            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.MoveAnchor, 7) # Move before </div>
-            cursor.insertText(chunk.replace(os.linesep, '<br>'))
+    def _on_ai_answer_started(self):
+        # Finalize the thinking widget by collapsing it
+        if self.current_thinking_widget:
+            if not self.current_thinking_widget.get_full_text().strip():
+                self.current_thinking_widget.hide() # Hide if empty
+            else:
+                self.current_thinking_widget.toggle_content() # Collapse if it has content
+            self.current_thinking_widget = None
 
-        self.ai_chat_history.verticalScrollBar().setValue(self.ai_chat_history.verticalScrollBar().maximum())
+        self.current_ai_bubble = ChatBubble("", is_user=False)
+        self._add_widget_to_chat(self.current_ai_bubble)
 
+    def _on_ai_answer_updated(self, content_chunk):
+        if self.current_ai_bubble:
+            self.current_ai_bubble.append_text(content_chunk)
 
-    def _on_ai_analysis_complete(self):
-        """Called when the AI stream is finished."""
-        self.ai_streaming_active = False
-        self.typing_indicator.stop_animation()
-        self.send_button.setEnabled(True)
+    def _on_ai_finished(self):
+        if self.current_typing_indicator:
+            self.current_typing_indicator.stop_animation()
 
+        # Handle cases where the stream ends unexpectedly
+        if self.current_thinking_widget:
+            if not self.current_thinking_widget.get_full_text().strip():
+                self.current_thinking_widget.hide()
+        if not self.current_ai_bubble and not self.current_thinking_widget:
+             self._on_ai_error("The AI produced an empty response.")
 
-    def _on_ai_analysis_error(self, error_message):
-        """Handles errors from the AI thread."""
-        self.typing_indicator.stop_animation()
-        self._append_ai_message(error_message, is_user=False, is_error=True)
-        self.ai_streaming_active = False
-        self.send_button.setEnabled(True)
+        self.current_thinking_widget = None
+        self.current_ai_bubble = None
+        self.ai_thread = None
 
+    def _on_ai_error(self, error_message):
+        if self.current_typing_indicator:
+            self.current_typing_indicator.stop_animation()
+        error_bubble = ChatBubble(f"<b>AI Error:</b><br>{error_message}", is_error=True)
+        self._add_widget_to_chat(error_bubble)
+        self.ai_thread = None
 
-    def _append_ai_message(self, content, is_user, is_error=False, is_suggestion=False, is_status=False):
-        # Gemini-inspired colors and styles
-        user_style = "background-color: #4f5159; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 10px 5px 80px;"
-        ai_style = "background-color: #3c4043; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
-        error_style = "background-color: #d32f2f; color: white; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
-        suggestion_style = "background-color: #3c4043; color: #e8eaed; border: 1px solid #5f6368; border-radius: 18px; padding: 10px; margin: 5px 25%; text-align: center;"
-        status_style = "color: #aaa; text-align: center; margin: 10px;"
-
-        bubble_html = ""
-        if is_user:
-            align = 'right'
-            # Use a non-breaking space for the title to ensure the bubble has height even with no text
-            bubble_html = f"<div style='{user_style}'><b>You</b><br>{content.replace(os.linesep, '<br>') if content else '&nbsp;'}</div>"
-        elif is_error:
-            align = 'left'
-            bubble_html = f"<div style='{error_style}'><b>AI Error</b><br>{content.replace(os.linesep, '<br>')}</div>"
-        elif is_status:
-            align = 'center'
-            bubble_html = f"<div style='{status_style}'>{content}</div>"
-        elif is_suggestion:
-            align = 'center'
-            bubble_html = f"<div style='{suggestion_style}'><i>Suggestion: {content}</i></div>"
-        else: # Regular AI message
-            align = 'left'
-            # The initial content can be None/empty for streaming, so handle that
-            text = content.replace(os.linesep, '<br>') if content else "&nbsp;"
-            bubble_html = f"<div style='{ai_style}'><b>AI Assistant</b><br>{text}</div>"
-
-        # The alignment div is crucial for QTextBrowser
-        html = f"<div align='{align}'>{bubble_html}</div>"
-
-        self.ai_chat_history.append(html)
-        self.ai_chat_history.verticalScrollBar().setValue(self.ai_chat_history.verticalScrollBar().maximum())
-
-    def _send_chat_message(self):
-        if self.ai_streaming_active:
-            return # Don't allow sending while AI is responding
-
-        user_text = self.ai_input_text.toPlainText().strip()
-        if not user_text:
-            return
-
-        self._append_ai_message(user_text, is_user=True)
-        self.ai_input_text.clear()
-        self.send_button.setEnabled(False)
-
-        self._run_ai_task(user_text)
+    def _on_prompt_selected(self, item, column):
+        """Handles clicks on the prompt tree to populate the input box."""
+        if item and item.parent():
+            prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
+            if prompt_text:
+                self.ai_input_text.setPlainText(prompt_text)
 
     def _show_about_dialog(self):
         about_text = """
@@ -2847,9 +3042,11 @@ class GScapy(QMainWindow):
         self.ai_chat_history.setOpenExternalLinks(True)
         chat_layout.addWidget(self.ai_chat_history, 1) # Add stretch factor
 
-        # Add the animated typing indicator
-        self.typing_indicator = TypingIndicator(self)
-        chat_layout.addWidget(self.typing_indicator)
+        self.ai_status_label = QLabel("<i>Querying AI... Please wait.</i>")
+        self.ai_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.ai_status_label.setStyleSheet("color: #aaa;")
+        self.ai_status_label.hide()
+        chat_layout.addWidget(self.ai_status_label)
 
         # --- Prompt Controls ---
         prompt_box = QGroupBox("Prompt Helper")
@@ -2954,16 +3151,16 @@ class GScapy(QMainWindow):
 
         # Vertical layout for the two buttons
         button_vbox = QVBoxLayout()
-        self.send_button = QPushButton("Send")
-        self.send_button.setToolTip("Send the message to the AI")
-        self.send_button.clicked.connect(self._send_chat_message)
+        send_button = QPushButton("Send")
+        send_button.setToolTip("Send the message to the AI")
+        send_button.clicked.connect(self._send_chat_message)
 
         self.ai_settings_btn = QPushButton()
         self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
         self.ai_settings_btn.setToolTip("Configure AI Models")
         self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
 
-        button_vbox.addWidget(self.send_button)
+        button_vbox.addWidget(send_button)
         button_vbox.addWidget(self.ai_settings_btn)
 
         input_layout.addLayout(button_vbox) # Add the vertical button layout to the main input layout
@@ -5219,6 +5416,8 @@ class GScapy(QMainWindow):
             if self.channel_hopper and self.channel_hopper.isRunning(): self.channel_hopper.stop()
             if self.resource_monitor_thread and self.resource_monitor_thread.isRunning():
                 self.resource_monitor_thread.stop()
+            if hasattr(self, 'ai_thread') and self.ai_thread and self.ai_thread.isRunning():
+                self.ai_thread.stop()
             logging.info("GScapy application closing.")
             event.accept()
         else:
