@@ -28,8 +28,26 @@ except ImportError:
     etree = None
     logging.warning("Optional XML reporting dependency not found. Please run 'pip install lxml'")
 
+import re
 from qt_material import apply_stylesheet, list_themes
-from PyQt6.QtGui import QActionGroup
+from PyQt6.QtGui import QActionGroup, QPixmap, QImage, QPalette
+
+def create_themed_icon(icon_path, color_str):
+    """Loads an SVG, replaces its color, and returns a QIcon."""
+    try:
+        with open(icon_path, 'r', encoding='utf-8') as f:
+            svg_data = f.read()
+
+        # Replace fill and stroke colors. This is a bit brittle and assumes simple SVGs.
+        themed_svg_data = re.sub(r'fill="[^"]*"', f'fill="{color_str}"', svg_data)
+        themed_svg_data = re.sub(r'stroke="[^"]*"', f'stroke="{color_str}"', themed_svg_data)
+
+        image = QImage.fromData(themed_svg_data.encode('utf-8'))
+        pixmap = QPixmap.fromImage(image)
+        return QIcon(pixmap)
+    except Exception as e:
+        logging.warning(f"Could not create themed icon for {icon_path}: {e}")
+        return QIcon(icon_path) # Fallback to original icon
 
 def get_vendor(mac_address):
     """Retrieves the vendor for a given MAC address from an online API."""
@@ -1323,6 +1341,7 @@ class ChatBubble(QWidget):
         self.is_streaming = is_streaming
 
         self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.label = QLabel(text)
         self.label.setWordWrap(True)
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -1331,22 +1350,24 @@ class ChatBubble(QWidget):
         self.set_stylesheet()
 
     def set_stylesheet(self):
+        # Increased horizontal padding to prevent text from touching the curved edges.
+        padding = "12px 15px 12px 15px"
         if self.is_user:
-            self.label.setStyleSheet("""
+            self.label.setStyleSheet(f"""
                 background-color: #3d5a80;
                 color: white;
-                padding: 10px;
+                padding: {padding};
                 border-radius: 15px;
             """)
             self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
-            bg_color = "#E5E5EA" # Final color
+            bg_color = "#E5E5EA"
             if self.is_streaming:
-                bg_color = "#F5F5F5" # Lighter color while streaming
+                bg_color = "#F5F5F5"
             self.label.setStyleSheet(f"""
                 background-color: {bg_color};
                 color: black;
-                padding: 10px;
+                padding: {padding};
                 border-radius: 15px;
             """)
             self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -1354,11 +1375,18 @@ class ChatBubble(QWidget):
     def append_text(self, text_chunk):
         current_text = self.label.text()
         self.label.setText(current_text + text_chunk)
-        self.adjustSize()
+        # The size hint is now dynamic, so we need to trigger an update.
+        self.updateGeometry()
 
     def finish_streaming(self):
         self.is_streaming = False
         self.set_stylesheet()
+
+    def sizeHint(self):
+        # Override sizeHint to provide an accurate size based on wrapped text.
+        # This is the key to fixing the text cutoff issue.
+        self.label.setFixedWidth(self.parentWidget().width() * 0.7)
+        return self.label.sizeHint()
 
 class AIAssistantTab(QWidget):
     def __init__(self, parent=None):
@@ -1368,46 +1396,31 @@ class AIAssistantTab(QWidget):
         self.current_ai_bubble = None
         self.ai_thread = None
 
-        # Restore the prompt dictionary
         self.ai_prompts = {
             "Threat Detection & Analysis": {
-                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
-                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
-                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
-                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
-                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
-            },
-            "Incident Response": {
-                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
-                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
-                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
+                "Analyze Firewall Logs": "Analyze the following firewall logs for suspicious patterns.",
+                "Review Web Server Logs for Attacks": "Review these web server logs for SQL injection or XSS attempts.",
             },
             "Vulnerability Assessment & PenTesting": {
-                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
-                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
-                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
-                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
-                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
-                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
+                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target: ",
+                "Analyze Nmap Scan": "Analyze the following Nmap scan results for vulnerabilities.",
+                "Explain Results to Non-Expert": "Explain these scan results in simple, non-technical terms.",
             },
         }
 
         self.init_ui()
 
     def init_ui(self):
-        # Main layout is now a splitter
         main_layout = QHBoxLayout(self)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter)
 
-        # --- Left Pane: Prompt Helper ---
         self.prompt_tree = QTreeWidget()
         self.prompt_tree.setHeaderHidden(True)
         self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
         self._populate_prompts()
         splitter.addWidget(self.prompt_tree)
 
-        # --- Right Pane: Chat Interface ---
         chat_container = QWidget()
         chat_layout = QVBoxLayout(chat_container)
         chat_layout.setContentsMargins(10, 10, 10, 10)
@@ -1415,7 +1428,7 @@ class AIAssistantTab(QWidget):
 
         self.chat_list = QListWidget(self)
         self.chat_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.chat_list.setStyleSheet("QListWidget { border: none; }") # Removed hardcoded background
+        self.chat_list.setStyleSheet("QListWidget { border: none; }")
         chat_layout.addWidget(self.chat_list)
 
         self.typing_indicator = TypingIndicator(self)
@@ -1423,47 +1436,48 @@ class AIAssistantTab(QWidget):
         self.typing_indicator.hide()
         chat_layout.addWidget(self.typing_indicator)
 
-        # --- Input Area ---
+        bottom_controls_layout = QHBoxLayout()
         input_frame = QFrame(self)
         input_frame.setObjectName("inputFrame")
-        input_frame.setStyleSheet("""
-            #inputFrame {
-                border: 1px solid #d0d0d0;
-                border-radius: 20px;
-                background-color: #fdfdfd;
-            }
-        """)
-        input_layout = QHBoxLayout(input_frame)
-        input_layout.setContentsMargins(15, 5, 5, 5)
-        input_layout.setSpacing(10)
+        input_frame.setStyleSheet("#inputFrame { border-radius: 20px; }")
+        input_frame_layout = QHBoxLayout(input_frame)
+        input_frame_layout.setContentsMargins(15, 5, 5, 5)
+        input_frame_layout.setSpacing(10)
 
         self.user_input = QLineEdit(self)
         self.user_input.setPlaceholderText("Ask the AI Assistant...")
         self.user_input.setStyleSheet("border: none; background-color: transparent; font-size: 14px;")
-        input_layout.addWidget(self.user_input)
+        input_frame_layout.addWidget(self.user_input)
 
-        # Buttons (Send and Settings)
         self.send_button = QPushButton("\u25B6")
         self.send_button.setFixedSize(30, 30)
         self.send_button.setStyleSheet("""
             QPushButton { background-color: #007bff; color: white; border-radius: 15px; font-size: 16px; }
             QPushButton:hover { background-color: #0056b3; }
         """)
+        input_frame_layout.addWidget(self.send_button)
+
+        bottom_controls_layout.addWidget(input_frame)
+
         self.ai_settings_btn = QPushButton()
-        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
         self.ai_settings_btn.setToolTip("Configure & Select AI Models")
+        self.ai_settings_btn.setFixedSize(32, 32)
+        self.ai_settings_btn.setStyleSheet("QPushButton { border: none; }")
+        self.update_theme() # Set initial themed icon
+        bottom_controls_layout.addWidget(self.ai_settings_btn)
 
-        input_layout.addWidget(self.send_button)
-        input_layout.addWidget(self.ai_settings_btn)
-        chat_layout.addWidget(input_frame)
-
+        chat_layout.addLayout(bottom_controls_layout)
         splitter.addWidget(chat_container)
-        splitter.setSizes([250, 750]) # Set initial sizes
+        splitter.setSizes([250, 750])
 
-        # --- Connections ---
         self.send_button.clicked.connect(self.send_message)
         self.user_input.returnPressed.connect(self.send_message)
         self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
+
+    def update_theme(self):
+        """Updates the icon color to match the new theme."""
+        text_color = self.palette().color(QPalette.ColorRole.WindowText).name()
+        self.ai_settings_btn.setIcon(create_themed_icon(os.path.join("icons", "tool.svg"), text_color))
 
     def _populate_prompts(self):
         for category, prompts in self.ai_prompts.items():
@@ -1907,6 +1921,10 @@ class GScapy(QMainWindow):
         theme_file = f"{theme_name}.xml"
         invert_secondary = "light" in theme_name
         apply_stylesheet(QApplication.instance(), theme=theme_file, invert_secondary=invert_secondary)
+
+        # After applying the stylesheet, notify the AI tab to update its themed icons
+        if hasattr(self, 'ai_assistant_tab'):
+            self.ai_assistant_tab.update_theme()
 
     def get_selected_iface(self):
         iface = self.iface_combo.currentText()
