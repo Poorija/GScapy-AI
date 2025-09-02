@@ -999,29 +999,39 @@ class TypingIndicator(QWidget):
         self.setMinimumHeight(40)
         self.dots = []
         self.animations = QParallelAnimationGroup(self)
+        self.initial_positions = []
 
         for i in range(3):
             dot = QLabel("●", self)
             dot.setStyleSheet("color: #888;")
             self.dots.append(dot)
-
-            anim = QPropertyAnimation(dot, b"pos")
-            anim.setDuration(400)
-            anim.setStartValue(dot.pos())
-            anim.setEndValue(dot.pos() - QPoint(0, 10))
-            anim.setEasingCurve(QEasingCurve.Type.OutInQuad)
-
-            # Create a sequential group to move up and then back down
-            seq_group = QSequentialAnimationGroup()
-            seq_group.addPause(i * 150) # Stagger the start of each dot's animation
-            seq_group.addAnimation(anim)
-            seq_group.addAnimation(anim.clone()) # Add the reverse animation
-            anim.setDirection(QPropertyAnimation.Direction.Backward) # Set the second animation to go back down
-
-            seq_group.setLoopCount(-1) # Loop indefinitely
-            self.animations.addAnimation(seq_group)
+            self.initial_positions.append(QPoint(0,0)) # Placeholder
 
     def start_animation(self):
+        self.animations = QParallelAnimationGroup(self)
+        for i, dot in enumerate(self.dots):
+            start_pos = self.initial_positions[i]
+            end_pos = start_pos - QPoint(0, 10)
+
+            up_anim = QPropertyAnimation(dot, b"pos")
+            up_anim.setDuration(400)
+            up_anim.setStartValue(start_pos)
+            up_anim.setEndValue(end_pos)
+            up_anim.setEasingCurve(QEasingCurve.Type.OutInQuad)
+
+            down_anim = QPropertyAnimation(dot, b"pos")
+            down_anim.setDuration(400)
+            down_anim.setStartValue(end_pos)
+            down_anim.setEndValue(start_pos)
+            down_anim.setEasingCurve(QEasingCurve.Type.InQuad)
+
+            seq_group = QSequentialAnimationGroup()
+            seq_group.addPause(i * 150)
+            seq_group.addAnimation(up_anim)
+            seq_group.addAnimation(down_anim)
+            seq_group.setLoopCount(-1)
+            self.animations.addAnimation(seq_group)
+
         self.show()
         self.animations.start()
 
@@ -1030,11 +1040,17 @@ class TypingIndicator(QWidget):
         self.hide()
 
     def resizeEvent(self, event):
-        # Center the dots within the widget
         total_width = sum(dot.width() for dot in self.dots) + 10 * 2
         start_x = (self.width() - total_width) // 2
+        y_pos = self.height() // 2 - 5
+
         for i, dot in enumerate(self.dots):
-            dot.move(start_x + i * (dot.width() + 10), 20)
+            x_pos = start_x + i * (dot.width() + 10)
+            self.initial_positions[i] = QPoint(x_pos, y_pos)
+            dot.move(self.initial_positions[i])
+        # If animation is running, restart it to use new positions
+        if self.animations.state() == QPropertyAnimation.State.Running:
+            self.start_animation()
 
 
 class ThinkingWidget(QFrame):
@@ -1107,13 +1123,10 @@ class ChatBubble(QFrame):
         # Set style based on message type
         if is_user:
             style = "background-color: #3d5a80; color: #f0f0f0; margin-right: 50px;"
-            align = Qt.AlignmentFlag.AlignRight
         elif is_error:
             style = "background-color: #d32f2f; color: white; margin-left: 50px;"
-            align = Qt.AlignmentFlag.AlignLeft
         else: # AI message
             style = "background-color: #4CAF50; color: white; margin-left: 50px;"
-            align = Qt.AlignmentFlag.AlignLeft
 
         self.setStyleSheet(f"""
             ChatBubble {{
@@ -1136,6 +1149,9 @@ class ChatBubble(QFrame):
         self.text_label.document().contentsChanged.connect(self.update_size)
 
         self.layout.addWidget(self.text_label)
+        # Call initial size update
+        self.update_size()
+
 
     def update_size(self):
         # Adjust the height of the QTextEdit to fit its content
@@ -1176,9 +1192,15 @@ class AIAnalysisThread(QThread):
     def run(self):
         try:
             import requests
+            # Add a system prompt to guide the AI's output format
+            system_prompt = "You are a helpful cybersecurity assistant. First, think step-by-step about the user's query. Enclose your entire thinking process within [THINKING] ... [THINKING] tags. After your thinking process, provide the final, user-facing answer inside [ANSWER] ... [ANSWER] tags."
+
             payload = {
                 "model": self.model,
-                "messages": [{"role": "user", "content": self.prompt}],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": self.prompt}
+                ],
                 "stream": True,
                 "options": {"temperature": 0.5}
             }
@@ -1186,54 +1208,65 @@ class AIAnalysisThread(QThread):
             with requests.post(self.endpoint, json=payload, headers=self.headers, stream=True, timeout=120) as response:
                 response.raise_for_status()
 
-                # State machine: 0=Waiting, 1=Thinking, 2=Answering
-                state = 0
+                state = 0  # 0=Waiting, 1=Thinking, 2=Answering
                 buffer = ""
 
-                for chunk in response.iter_lines():
-                    if self.stop_event.is_set():
-                        break
-                    if not chunk:
-                        continue
+                for line in response.iter_lines():
+                    if self.stop_event.is_set(): break
+                    if not line: continue
 
                     try:
-                        data = json.loads(chunk)
-                        # Extract content based on API format (OpenAI/Ollama vs. others)
-                        content_part = data.get("message", {}).get("content", "")
-                        if not content_part:
-                            content_part = data.get("response", "") # Fallback for non-message format
-
+                        data = json.loads(line)
+                        content_part = data.get("message", {}).get("content", "") or data.get("response", "")
                         buffer += content_part
 
-                        # Process buffer for special tokens
-                        while '[THINKING]' in buffer:
+                        # State machine for parsing [THINKING] and [ANSWER] tags
+                        if state == 0 and '[THINKING]' in buffer:
                             parts = buffer.split('[THINKING]', 1)
-                            if state == 2: # Was answering, now thinking again
-                                self.thinking_updated.emit(parts[0])
                             buffer = parts[1]
-                            if state != 1:
-                                self.thinking_started.emit("")
-                                state = 1
+                            self.thinking_started.emit("")
+                            state = 1
 
-                        while '[ANSWER]' in buffer:
-                            parts = buffer.split('[ANSWER]', 1)
+                        if state == 1 and '[THINKING]' in buffer: # End of thinking
+                            parts = buffer.split('[THINKING]', 1)
+                            self.thinking_updated.emit(parts[0])
+                            buffer = parts[1]
+                            state = 0 # Wait for answer
+
+                        if state != 2 and '[ANSWER]' in buffer:
                             if state == 1: # Was thinking
+                                parts = buffer.split('[ANSWER]', 1)
                                 self.thinking_updated.emit(parts[0])
-                            buffer = parts[1]
-                            if state != 2:
-                                self.answer_started.emit()
-                                state = 2
+                                buffer = parts[1]
+                            else: # Started straight with an answer
+                                parts = buffer.split('[ANSWER]', 1)
+                                buffer = parts[1]
 
-                        # Emit the remaining part of the buffer based on current state
+                            self.answer_started.emit()
+                            state = 2
+
+                        if state == 2 and '[ANSWER]' in buffer: # End of answer
+                            parts = buffer.split('[ANSWER]', 1)
+                            self.answer_updated.emit(parts[0])
+                            buffer = "" # Discard anything after final answer tag
+                            break # End of stream processing
+
+                        # Emit content based on current state
                         if state == 1:
                             self.thinking_updated.emit(buffer)
+                            buffer = ""
                         elif state == 2:
                             self.answer_updated.emit(buffer)
-                        buffer = "" # Clear buffer after processing
+                            buffer = ""
 
                     except json.JSONDecodeError:
-                        logging.warning(f"Could not decode JSON chunk: {chunk}")
+                        logging.warning(f"Could not decode JSON chunk: {line}")
                         continue
+
+                # Handle any remaining buffer content after the loop
+                if state == 1: self.thinking_updated.emit(buffer)
+                elif state == 2: self.answer_updated.emit(buffer)
+
         except Exception as e:
             error_message = f"Failed to get AI analysis: {e}"
             logging.error(error_message, exc_info=True)
@@ -1642,6 +1675,13 @@ class GScapy(QMainWindow):
         splitter.addWidget(chat_container)
 
         splitter.setSizes([300, 700])
+
+        # Add a simple welcome message directly, avoiding the old problematic methods.
+        welcome_label = QLabel("<h1>GScapy + AI Assistant</h1><p><i>Select a prompt from the left or type your query below.</i></p>")
+        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome_label.setWordWrap(True)
+        self.chat_layout.insertWidget(0, welcome_label)
+
         return widget
 
     def _add_widget_to_chat(self, widget):
@@ -1663,12 +1703,10 @@ class GScapy(QMainWindow):
         self._add_widget_to_chat(user_bubble)
 
         # Show typing indicator
-        if self.current_typing_indicator:
-            self.current_typing_indicator.start_animation()
-        else:
+        if not hasattr(self, 'current_typing_indicator') or not self.current_typing_indicator:
             self.current_typing_indicator = TypingIndicator()
             self._add_widget_to_chat(self.current_typing_indicator)
-            self.current_typing_indicator.start_animation()
+        self.current_typing_indicator.start_animation()
 
         # Load settings and run thread
         settings_file = "ai_settings.json"
@@ -5416,8 +5454,6 @@ class GScapy(QMainWindow):
             if self.channel_hopper and self.channel_hopper.isRunning(): self.channel_hopper.stop()
             if self.resource_monitor_thread and self.resource_monitor_thread.isRunning():
                 self.resource_monitor_thread.stop()
-            if hasattr(self, 'ai_thread') and self.ai_thread and self.ai_thread.isRunning():
-                self.ai_thread.stop()
             logging.info("GScapy application closing.")
             event.accept()
         else:
