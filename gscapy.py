@@ -1309,38 +1309,42 @@ class GScapy(QMainWindow):
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
 
-            active_provider = settings.get("active_provider", "local_ai")
+            active_provider = settings.get("active_provider")
             active_model = settings.get("active_model")
             headers = {}
+            endpoint = None
+            model = active_model
 
-            if not active_model:
-                self._append_ai_message("No active AI model selected. Please choose one from the AI Settings menu (the gear icon).", is_user=False, is_error=True)
+            if not active_provider or not active_model:
+                self._append_ai_message("No active AI model selected. Please click the gear icon to choose a configured model.", is_user=False, is_error=True)
                 return
+
+            logging.info(f"Running AI task with provider '{active_provider}' and model '{active_model}'")
 
             if active_provider == "local_ai":
                 provider_settings = settings.get("local_ai", {})
                 endpoint = provider_settings.get("endpoint")
-                model = active_model
+                if not endpoint:
+                    self._append_ai_message("Local AI provider is active, but the endpoint is not configured in Advanced Settings.", is_user=False, is_error=True)
+                    return
             else: # It's an online service
                 online_settings = settings.get("online_ai", {})
-                provider_name = active_provider
-                provider_data = online_settings.get(provider_name, {})
+                provider_data = online_settings.get(active_provider, {})
                 api_key = provider_data.get("api_key")
-                model = active_model
 
                 if not api_key:
-                    self._append_ai_message(f"API Key for the active provider ({provider_name}) is required. Please set it in the advanced AI Settings.", is_user=False, is_error=True)
+                    self._append_ai_message(f"API Key for the active provider ({active_provider}) is required. Please set it in Advanced AI Settings.", is_user=False, is_error=True)
                     return
 
-                if provider_name == "OpenAI":
+                if active_provider == "OpenAI":
                     endpoint = "https://api.openai.com/v1/chat/completions"
                     headers["Authorization"] = f"Bearer {api_key}"
                 else:
-                    self._append_ai_message(f"The online provider '{provider_name}' is not yet supported for sending messages.", is_user=False, is_error=True)
+                    self._append_ai_message(f"The online provider '{active_provider}' is not yet supported for sending messages.", is_user=False, is_error=True)
                     return
 
             if not endpoint or not model:
-                self._append_ai_message("API endpoint and model name for the active provider are not configured correctly in AI Settings.", is_user=False, is_error=True)
+                self._append_ai_message(f"Could not find valid endpoint or model name for the active provider '{active_provider}'. Please check configuration in Advanced Settings.", is_user=False, is_error=True)
                 return
 
         except Exception as e:
@@ -2758,33 +2762,23 @@ class GScapy(QMainWindow):
         }
 
         # --- Prompt UI Setup ---
-        # Main container for all prompt-related UI
-        prompt_container = QWidget()
-        prompt_container_layout = QVBoxLayout(prompt_container)
-        prompt_container_layout.setContentsMargins(0,0,0,0)
+        self.prompt_tree = QTreeWidget()
+        self.prompt_tree.setHeaderHidden(True)
+        self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
 
-        # Create a scroll area for the prompts
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout(scroll_widget)
-        scroll_area.setWidget(scroll_widget)
-
-        # Populate the scroll area with prompts
         for category, prompts in self.ai_prompts.items():
-            category_label = QLabel(f"<b>{category}</b>")
-            category_label.setStyleSheet("font-size: 12pt; margin-top: 10px;")
-            scroll_layout.addWidget(category_label)
-            for prompt_name, prompt_text in prompts.items():
-                prompt_button = QPushButton(prompt_name)
-                prompt_button.setToolTip(prompt_text)
-                prompt_button.setStyleSheet("text-align: left; padding: 8px;")
-                # Use a lambda to capture the correct prompt_text for each button
-                prompt_button.clicked.connect(lambda checked, text=prompt_text: self.ai_input_text.setPlainText(text))
-                scroll_layout.addWidget(prompt_button)
+            category_item = QTreeWidgetItem(self.prompt_tree, [category])
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            font = category_item.font(0)
+            font.setBold(True)
+            category_item.setFont(0, font)
 
-        prompt_container_layout.addWidget(scroll_area)
-        main_layout.addWidget(prompt_container)
+            for prompt_name, prompt_text in prompts.items():
+                prompt_item = QTreeWidgetItem(category_item, [prompt_name])
+                prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text) # Store full prompt in data role
+                prompt_item.setToolTip(0, prompt_text)
+
+        main_layout.addWidget(self.prompt_tree)
 
 
         # --- Input & Send ---
@@ -2815,6 +2809,14 @@ class GScapy(QMainWindow):
         self._show_initial_ai_suggestions()
         return widget
 
+    def _on_prompt_selected(self, item, column):
+        """Handles clicks on the prompt tree to populate the input box."""
+        # Only act if the item is a child (a prompt, not a category)
+        if item.parent():
+            prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
+            if prompt_text:
+                self.ai_input_text.setPlainText(prompt_text)
+
     def _show_initial_ai_suggestions(self):
         """Shows a few random prompts in the chat window on startup."""
         self.ai_chat_history.clear()
@@ -2835,9 +2837,9 @@ class GScapy(QMainWindow):
         settings_file = "ai_settings.json"
         try:
             if not os.path.exists(settings_file):
-                # If the file doesn't exist, prompt the user to create it.
+                QMessageBox.information(self, "Setup Required", "AI settings have not been configured yet. Please configure a provider in the advanced settings.")
                 if self._show_ai_settings_dialog() == QDialog.DialogCode.Rejected:
-                    return # User cancelled the settings dialog
+                    return
 
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
@@ -2849,23 +2851,23 @@ class GScapy(QMainWindow):
         provider_group = QActionGroup(self)
         provider_group.setExclusive(True)
 
-        active_provider = settings.get("active_provider", "local_ai")
-        active_model = settings.get("active_model", "")
+        active_provider = settings.get("active_provider")
+        active_model = settings.get("active_model")
 
-        # --- Local AI Submenu ---
-        local_menu = menu.addMenu("Local AI")
+        has_local_model = False
         local_settings = settings.get("local_ai", {})
-        local_model_name = local_settings.get("model", "N/A")
-        action = QAction(f"Local: {local_model_name}", self)
-        action.setCheckable(True)
-        if active_provider == "local_ai":
-            action.setChecked(True)
-        action.triggered.connect(lambda chk, p="local_ai", m=local_model_name: self._set_active_ai_provider(p, m))
-        local_menu.addAction(action)
-        provider_group.addAction(action)
+        local_model_name = local_settings.get("model")
+        if local_model_name:
+            has_local_model = True
+            action = QAction(f"Local: {local_model_name}", self)
+            action.setCheckable(True)
+            if active_provider == "local_ai" and active_model == local_model_name:
+                action.setChecked(True)
+            action.triggered.connect(lambda chk, p="local_ai", m=local_model_name: self._set_active_ai_provider(p, m))
+            menu.addAction(action)
+            provider_group.addAction(action)
 
-
-        # --- Online Services Submenu ---
+        online_options_exist = False
         online_menu = menu.addMenu("Online Services")
         online_settings = settings.get("online_ai", {})
         provider_names = ["OpenAI", "Gemini", "Grok", "DeepSeek", "Qwen"]
@@ -2876,31 +2878,33 @@ class GScapy(QMainWindow):
             model_name = provider_data.get("model")
 
             if api_key and model_name:
+                online_options_exist = True
                 action = QAction(f"{provider_name}: {model_name}", self)
                 action.setCheckable(True)
-                # Check if this is the currently active provider and model
                 if active_provider == provider_name and active_model == model_name:
                     action.setChecked(True)
-
                 action.triggered.connect(lambda chk, p=provider_name, m=model_name: self._set_active_ai_provider(p, m))
                 online_menu.addAction(action)
                 provider_group.addAction(action)
 
+        online_menu.setEnabled(online_options_exist)
+
+        if not has_local_model and not online_options_exist:
+             menu.addAction(QAction("No models configured...", self))
+
         menu.addSeparator()
         menu.addAction("Advanced Settings...", self._show_ai_settings_dialog)
 
-        # Show the menu below the settings button
         menu.exec(self.ai_settings_btn.mapToGlobal(self.ai_settings_btn.rect().bottomLeft()))
 
     def _set_active_ai_provider(self, provider_name, model_name):
         """Saves the selected AI provider and model as the active one."""
         settings_file = "ai_settings.json"
         try:
+            settings = {}
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
                     settings = json.load(f)
-            else:
-                settings = {}
 
             settings['active_provider'] = provider_name
             settings['active_model'] = model_name
@@ -2908,7 +2912,7 @@ class GScapy(QMainWindow):
             with open(settings_file, 'w') as f:
                 json.dump(settings, f, indent=4)
 
-            self.status_bar.showMessage(f"AI Provider set to {provider_name} ({model_name})", 3000)
+            QMessageBox.information(self, "AI Model Changed", f"The active AI model has been set to:\n\nProvider: {provider_name}\nModel: {model_name}")
             logging.info(f"AI Provider set to {provider_name} ({model_name})")
 
         except (IOError, json.JSONDecodeError) as e:
