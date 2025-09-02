@@ -29,6 +29,7 @@ except ImportError:
     logging.warning("Optional XML reporting dependency not found. Please run 'pip install lxml'")
 
 from qt_material import apply_stylesheet, list_themes
+from PyQt6.QtGui import QActionGroup
 
 def get_vendor(mac_address):
     """Retrieves the vendor for a given MAC address from an online API."""
@@ -2673,20 +2674,26 @@ class GScapy(QMainWindow):
         return widget
 
     def _create_ai_assistant_tab(self):
-        """Creates the UI for the AI Assistant chat tab."""
+        """Creates the UI for the AI Assistant chat tab with a side-by-side layout."""
+        # Main widget and splitter layout
         widget = QWidget()
-        main_layout = QVBoxLayout(widget)
+        main_layout = QHBoxLayout(widget) # Main layout for the tab
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # --- Right Pane: Chat Interface ---
+        chat_container = QWidget()
+        chat_layout = QVBoxLayout(chat_container)
 
         self.ai_chat_history = QTextBrowser()
         self.ai_chat_history.setOpenExternalLinks(True)
-        self.ai_chat_history.setHtml("<h1>AI Assistant</h1><p>Send scan results to this tab or ask a general security question.</p>")
-        main_layout.addWidget(self.ai_chat_history, 1) # Add stretch factor
+        chat_layout.addWidget(self.ai_chat_history, 1) # Add stretch factor
 
         self.ai_status_label = QLabel("<i>Querying AI... Please wait.</i>")
         self.ai_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.ai_status_label.setStyleSheet("color: #aaa;")
         self.ai_status_label.hide()
-        main_layout.addWidget(self.ai_status_label)
+        chat_layout.addWidget(self.ai_status_label)
 
         # --- Prompt Controls ---
         prompt_box = QGroupBox("Prompt Helper")
@@ -2778,7 +2785,7 @@ class GScapy(QMainWindow):
                 prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text) # Store full prompt in data role
                 prompt_item.setToolTip(0, prompt_text)
 
-        main_layout.addWidget(self.prompt_tree)
+        splitter.addWidget(self.prompt_tree)
 
 
         # --- Input & Send ---
@@ -2804,15 +2811,19 @@ class GScapy(QMainWindow):
         button_vbox.addWidget(self.ai_settings_btn)
 
         input_layout.addLayout(button_vbox) # Add the vertical button layout to the main input layout
-        main_layout.addLayout(input_layout)
+        chat_layout.addLayout(input_layout)
+        splitter.addWidget(chat_container)
+
+        # Set initial sizes for the splitter
+        splitter.setSizes([300, 700])
 
         self._show_initial_ai_suggestions()
         return widget
 
     def _on_prompt_selected(self, item, column):
         """Handles clicks on the prompt tree to populate the input box."""
-        # Only act if the item is a child (a prompt, not a category)
-        if item.parent():
+        # Only act if the item is a child (a prompt, not a category) by checking if it has a parent.
+        if item and item.parent():
             prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
             if prompt_text:
                 self.ai_input_text.setPlainText(prompt_text)
