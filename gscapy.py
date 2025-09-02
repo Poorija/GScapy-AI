@@ -1363,36 +1363,67 @@ class ChatBubble(QWidget):
 class AIAssistantTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.parent = parent
+        self.parent = parent # GScapy main window instance
         self.thinking_widget = None
         self.current_ai_bubble = None
         self.ai_thread = None
+
+        # Restore the prompt dictionary
+        self.ai_prompts = {
+            "Threat Detection & Analysis": {
+                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
+                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
+                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
+                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
+                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
+            },
+            "Incident Response": {
+                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
+                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
+                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
+            },
+            "Vulnerability Assessment & PenTesting": {
+                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
+                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
+                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
+                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
+                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
+                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
+            },
+        }
+
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        # Main layout is now a splitter
+        main_layout = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
 
-        # Chat display area
+        # --- Left Pane: Prompt Helper ---
+        self.prompt_tree = QTreeWidget()
+        self.prompt_tree.setHeaderHidden(True)
+        self.prompt_tree.itemClicked.connect(self._on_prompt_selected)
+        self._populate_prompts()
+        splitter.addWidget(self.prompt_tree)
+
+        # --- Right Pane: Chat Interface ---
+        chat_container = QWidget()
+        chat_layout = QVBoxLayout(chat_container)
+        chat_layout.setContentsMargins(10, 10, 10, 10)
+        chat_layout.setSpacing(10)
+
         self.chat_list = QListWidget(self)
         self.chat_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.chat_list.setStyleSheet("""
-            QListWidget {
-                background-color: #ffffff;
-                border: none;
-            }
-        """)
-        layout.addWidget(self.chat_list)
+        self.chat_list.setStyleSheet("QListWidget { border: none; }") # Removed hardcoded background
+        chat_layout.addWidget(self.chat_list)
 
-        # Typing indicator
         self.typing_indicator = TypingIndicator(self)
         self.typing_indicator.setFixedHeight(30)
         self.typing_indicator.hide()
-        layout.addWidget(self.typing_indicator)
+        chat_layout.addWidget(self.typing_indicator)
 
-
-        # User input area
+        # --- Input Area ---
         input_frame = QFrame(self)
         input_frame.setObjectName("inputFrame")
         input_frame.setStyleSheet("""
@@ -1402,7 +1433,6 @@ class AIAssistantTab(QWidget):
                 background-color: #fdfdfd;
             }
         """)
-
         input_layout = QHBoxLayout(input_frame)
         input_layout.setContentsMargins(15, 5, 5, 5)
         input_layout.setSpacing(10)
@@ -1412,29 +1442,46 @@ class AIAssistantTab(QWidget):
         self.user_input.setStyleSheet("border: none; background-color: transparent; font-size: 14px;")
         input_layout.addWidget(self.user_input)
 
-        self.send_button = QPushButton(self)
-        # Using a unicode character for the send icon
-        self.send_button.setText("\u25B6")
+        # Buttons (Send and Settings)
+        self.send_button = QPushButton("\u25B6")
         self.send_button.setFixedSize(30, 30)
         self.send_button.setStyleSheet("""
-            QPushButton {
-                background-color: #007bff;
-                color: white;
-                border-radius: 15px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #0056b3;
-            }
-            QPushButton:pressed {
-                background-color: #004499;
-            }
+            QPushButton { background-color: #007bff; color: white; border-radius: 15px; font-size: 16px; }
+            QPushButton:hover { background-color: #0056b3; }
         """)
-        input_layout.addWidget(self.send_button)
-        layout.addWidget(input_frame)
+        self.ai_settings_btn = QPushButton()
+        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
+        self.ai_settings_btn.setToolTip("Configure & Select AI Models")
 
+        input_layout.addWidget(self.send_button)
+        input_layout.addWidget(self.ai_settings_btn)
+        chat_layout.addWidget(input_frame)
+
+        splitter.addWidget(chat_container)
+        splitter.setSizes([250, 750]) # Set initial sizes
+
+        # --- Connections ---
         self.send_button.clicked.connect(self.send_message)
         self.user_input.returnPressed.connect(self.send_message)
+        self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
+
+    def _populate_prompts(self):
+        for category, prompts in self.ai_prompts.items():
+            category_item = QTreeWidgetItem(self.prompt_tree, [category])
+            font = category_item.font(0)
+            font.setBold(True)
+            category_item.setFont(0, font)
+            category_item.setFlags(category_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            for prompt_name, prompt_text in prompts.items():
+                prompt_item = QTreeWidgetItem(category_item, [prompt_name])
+                prompt_item.setData(0, Qt.ItemDataRole.UserRole, prompt_text)
+                prompt_item.setToolTip(0, prompt_text)
+
+    def _on_prompt_selected(self, item, column):
+        if item and item.parent():
+            prompt_text = item.data(0, Qt.ItemDataRole.UserRole)
+            if prompt_text:
+                self.user_input.setText(prompt_text)
 
     def _add_chat_bubble(self, message, is_user):
         item = QListWidgetItem(self.chat_list)
@@ -1454,19 +1501,14 @@ class AIAssistantTab(QWidget):
 
     def send_message(self):
         user_text = self.user_input.text().strip()
-        if not user_text:
-            return
-
+        if not user_text: return
         self._add_chat_bubble(user_text, is_user=True)
         self.user_input.clear()
         self.start_ai_analysis(user_text)
 
     def start_ai_analysis(self, prompt):
         ai_settings = self.parent.get_ai_settings()
-        if not ai_settings:
-            # Error message is already shown by get_ai_settings
-            return
-
+        if not ai_settings: return
         self._show_typing_indicator(True)
         self.ai_thread = AIAnalysisThread(prompt, ai_settings, self)
         self.ai_thread.response_ready.connect(self.handle_ai_response)
@@ -1476,10 +1518,8 @@ class AIAssistantTab(QWidget):
 
     def handle_ai_response(self, chunk, is_thinking, is_final_answer_chunk):
         self._show_typing_indicator(False)
-
         if is_thinking:
             if not self.thinking_widget:
-                # Create and add the thinking widget to the list
                 self.thinking_widget = ThinkingWidget()
                 item = QListWidgetItem(self.chat_list)
                 item.setSizeHint(self.thinking_widget.sizeHint())
@@ -1488,96 +1528,111 @@ class AIAssistantTab(QWidget):
                 self.thinking_widget.show()
             self.thinking_widget.append_text(chunk)
         else:
-             # Once we start getting the answer, hide the thinking widget if it exists
             if self.thinking_widget and not self.thinking_widget.is_collapsed():
-                 self.thinking_widget.toggle_content() # Collapse it
-
+                 self.thinking_widget.toggle_content()
             if self.current_ai_bubble is None:
                 item = QListWidgetItem(self.chat_list)
                 self.current_ai_bubble = ChatBubble("", is_user=False, is_streaming=True)
                 item.setSizeHint(self.current_ai_bubble.sizeHint())
                 self.chat_list.addItem(item)
                 self.chat_list.setItemWidget(item, self.current_ai_bubble)
-
             self.current_ai_bubble.append_text(chunk)
-            # This is a bit of a hack to force the QListWidget to resize the item
-            list_item = self.chat_list.item(self.chat_list.count() - 1)
-            if list_item:
-                list_item.setSizeHint(self.current_ai_bubble.sizeHint())
+            # A more robust way to ensure the widget resizes is to update the whole list's geometry
+            self.chat_list.updateGeometries()
             self.chat_list.scrollToBottom()
-
 
     def on_ai_thread_finished(self):
         self._show_typing_indicator(False)
-        # Finalize the bubble
         if self.current_ai_bubble:
             self.current_ai_bubble.finish_streaming()
-        # Reset for the next message
         self.thinking_widget = None
         self.current_ai_bubble = None
-
 
     def handle_ai_error(self, error_message):
         self._show_typing_indicator(False)
         self._add_chat_bubble(f"Error: {error_message}", is_user=False)
-        if self.thinking_widget:
-            self.thinking_widget.hide()
-        # Reset state
+        if self.thinking_widget: self.thinking_widget.hide()
         self.thinking_widget = None
         self.current_ai_bubble = None
 
     def send_to_analyst(self, tool_name, results_data=None, context=None):
-        """Formats scan results and sends them to the AI Assistant's input box."""
-        formatted_results = ""
-        header = ""
-
+        formatted_results, header = "", ""
         if tool_name == "nmap":
             header = f"Nmap scan results for target: {context}"
-            if results_data: # Assumes results_data is XML string
+            if results_data:
                 try:
                     root = etree.fromstring(results_data.encode('utf-8'))
-                    lines = []
-                    for host in root.findall('host'):
-                        addr = host.find('address').get('addr')
-                        lines.append(f"Host: {addr}")
-                        for port in host.findall('ports/port'):
-                            if port.find('state').get('state') == 'open':
-                                portid = port.get('portid')
-                                protocol = port.get('protocol')
-                                service_elem = port.find('service')
-                                service = service_elem.get('name', 'unknown') if service_elem is not None else 'unknown'
-                                version = service_elem.get('product', '') if service_elem is not None else ''
-                                lines.append(f"  - Port {portid}/{protocol} ({service}): {version}")
+                    lines = [f"Host: {host.find('address').get('addr')}"]
+                    for port in host.findall('ports/port'):
+                        if port.find('state').get('state') == 'open':
+                            service = port.find('service')
+                            lines.append(f"  - Port {port.get('portid')}/{port.get('protocol')} ({service.get('name', 'n/a')}): {service.get('product', '')}")
                     formatted_results = "\n".join(lines)
-                except Exception as e:
-                    logging.error(f"Could not parse Nmap XML for AI analysis: {e}")
-                    # Fallback to just sending the raw XML
-                    formatted_results = results_data
-            else:
-                formatted_results = "No Nmap XML data available."
-
-        elif tool_name == "subdomain" and isinstance(results_data, QTreeWidget):
-            domain = context or "unknown domain"
-            header = f"Subdomain scan results for: {domain}"
-            items = [results_data.topLevelItem(i).text(0) for i in range(results_data.topLevelItemCount())]
-            formatted_results = "\n".join(items)
-
-        elif tool_name == "port_scanner" and isinstance(results_data, list):
-            target = context or "unknown target"
-            header = f"Port scan results for: {target}"
-            lines = [f"Port {p} is {s} ({srv})" for p, s, srv in results_data]
-            formatted_results = "\n".join(lines)
-
+                except Exception: formatted_results = results_data
+            else: formatted_results = "No Nmap XML data available."
+        elif tool_name == "subdomain":
+            header, formatted_results = f"Subdomain scan for: {context}", "\n".join([results_data.topLevelItem(i).text(0) for i in range(results_data.topLevelItemCount())])
+        elif tool_name == "port_scanner":
+            header, formatted_results = f"Port scan for: {context}", "\n".join([f"Port {p} is {s} ({srv})" for p, s, srv in results_data])
         if not formatted_results.strip():
-            QMessageBox.information(self, "No Data", "No data available to send.")
-            return
-
-        # Prepare a prompt that gives the AI context
-        full_text = f"Analyze the following results from the {tool_name} tool and provide a summary of potential vulnerabilities or next steps for a penetration tester.\n\n--- {header} ---\n{formatted_results}\n--- END OF DATA ---"
-
+            QMessageBox.information(self, "No Data", "No data to send."); return
+        full_text = f"Analyze the following from {tool_name} and summarize potential vulnerabilities or next steps.\n\n--- {header} ---\n{formatted_results}\n--- END ---"
         self.user_input.setText(full_text)
         self.parent.tab_widget.setCurrentWidget(self)
-        logging.info(f"Sent {tool_name} results to AI Assistant tab.")
+
+    def _show_ai_settings_menu(self):
+        settings_file = "ai_settings.json"
+        try:
+            settings = {}
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f: settings = json.load(f)
+        except (IOError, json.JSONDecodeError) as e:
+            QMessageBox.warning(self, "Error", f"Could not load AI settings: {e}"); return
+        menu = QMenu(self)
+        provider_group = QActionGroup(self)
+        provider_group.setExclusive(True)
+        active_provider, active_model = settings.get("active_provider"), settings.get("active_model")
+
+        # Local AI
+        local_settings = settings.get("local_ai", {})
+        if local_model_name := local_settings.get("model"):
+            action = QAction(f"Local: {local_model_name}", self, checkable=True)
+            if active_provider == "local_ai": action.setChecked(True)
+            action.triggered.connect(lambda chk, p="local_ai", m=local_model_name: self._set_active_ai_provider(p, m))
+            provider_group.addAction(action)
+            menu.addAction(action)
+
+        # Online Services
+        online_menu = menu.addMenu("Online Services")
+        online_settings = settings.get("online_ai", {})
+        online_options_exist = False
+        for name in ["OpenAI", "Gemini", "Grok", "DeepSeek", "Qwen"]:
+            if (p_data := online_settings.get(name, {})) and p_data.get("api_key") and p_data.get("model"):
+                online_options_exist = True
+                action = QAction(f"{name}: {p_data['model']}", self, checkable=True)
+                if active_provider == name: action.setChecked(True)
+                action.triggered.connect(lambda chk, p=name, m=p_data['model']: self._set_active_ai_provider(p, m))
+                provider_group.addAction(action)
+                online_menu.addAction(action)
+        online_menu.setEnabled(online_options_exist)
+
+        menu.addSeparator()
+        menu.addAction("Advanced Settings...", self.parent._show_ai_settings_dialog)
+        menu.exec(self.ai_settings_btn.mapToGlobal(self.ai_settings_btn.rect().bottomLeft()))
+
+    def _set_active_ai_provider(self, provider, model):
+        settings_file = "ai_settings.json"
+        try:
+            settings = {}
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f: settings = json.load(f)
+            settings['active_provider'] = provider
+            settings['active_model'] = model
+            with open(settings_file, 'w') as f: json.dump(settings, f, indent=4)
+            QMessageBox.information(self, "AI Model Changed", f"Active model set to:\n{provider}: {model}")
+            logging.info(f"AI Provider set to {provider} ({model})")
+        except (IOError, json.JSONDecodeError) as e:
+            QMessageBox.warning(self, "Error", f"Could not save AI settings: {e}")
 
 # --- Main Application ---
 class GScapy(QMainWindow):
