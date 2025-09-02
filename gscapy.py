@@ -1064,7 +1064,7 @@ class AIGuideDialog(QDialog):
     """A dialog to show the user guide for AI features."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("AI Features Guide")
+        self.setWindowTitle("AI Features Guide for GScapy + AI")
         self.setMinimumSize(700, 500)
 
         layout = QVBoxLayout(self)
@@ -1080,52 +1080,67 @@ class AIGuideDialog(QDialog):
                 code { background-color: #2d313a; padding: 2px 5px; border-radius: 4px; font-family: "Courier New", monospace; }
                 a { color: #8be9fd; }
                 ul { padding-left: 20px; }
+                .button-icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; }
             </style>
         </head>
         <body>
-            <h1>AI Integration Guide</h1>
-            <p>This guide explains how to set up and use the AI analysis features within GScapy.</p>
+            <h1>AI Integration Guide (v3.0)</h1>
+            <p>This guide explains how to set up and use the new AI analysis features within <b>GScapy + AI</b>.</p>
 
-            <h2>1. Setting Up a Local AI Service</h2>
-            <p>GScapy's AI features work by connecting to a local Large Language Model (LLM) that you run on your own machine. This ensures your data remains private. We recommend using <b>Ollama</b> or <b>LMStudio</b>.</p>
+            <h2>1. Setting Up an AI Service</h2>
+            <p>GScapy's AI features work by connecting to a Large Language Model (LLM). You can use a local service that you run on your own machine (ensuring privacy) or an online provider.</p>
 
-            <h3>Using Ollama (Recommended)</h3>
+            <h3>Local AI (Recommended)</h3>
+            <p>We recommend using <b>Ollama</b> or <b>LMStudio</b>.</p>
             <ol>
                 <li>Download and install Ollama from <a href="https://ollama.com/">ollama.com</a>.</li>
-                <li>Open your terminal or command prompt and run <code>ollama serve</code> if it's not already running.</li>
-                <li>Pull a recommended model (see list below).</li>
+                <li>Open your terminal and run <code>ollama pull llama3</code> to get a great general-purpose model.</li>
+                <li>Ensure the service is running in the background.</li>
             </ol>
 
-            <h3>Using LMStudio</h3>
-            <ol>
-                <li>Download and install LMStudio from <a href="https://lmstudio.ai/">lmstudio.ai</a>.</li>
-                <li>In LMStudio, search for and download a model from the 'Home' tab. Make sure to get a GGUF format model.</li>
-                <li>Go to the 'Local Server' tab (the '&lt;->' icon) and start the server.</li>
-            </ol>
+            <h3>Online AI</h3>
+            <p>You can also connect to providers like OpenAI. You will need an API key from the provider.</p>
 
-            <h2>2. Recommended Models for Cybersecurity</h2>
-            <p>While many models can work, some are specifically trained for code and security analysis. Here are a few recommendations:</p>
-            <ul>
-                <li><b>codellama:</b> A great general-purpose model for code and security. <br><code>ollama pull codellama</code></li>
-                <li><b>deepseek-coder:</b> Another excellent model focused on coding tasks. <br><code>ollama pull deepseek-coder</code></li>
-                <li><b>saki007ster/CybersecurityRiskAnalyst:</b> A specialized model for risk analysis. <br><code>ollama pull saki007ster/CybersecurityRiskAnalyst</code></li>
-                <li><b>llama3:</b> A powerful general-purpose model that also performs well on security tasks. <br><code>ollama pull llama3</code></li>
-            </ul>
-
-            <h2>3. Configuring GScapy</h2>
-            <p>Once your local AI service is running, you need to tell GScapy how to connect to it.</p>
+            <h2>2. Configuring GScapy + AI</h2>
+            <p>You must tell GScapy how to connect to your chosen AI service.</p>
             <ol>
-                <li>In GScapy, go to the <b>Help -> AI Settings...</b> menu.</li>
-                <li>Select the 'Local AI' or 'Online Services' tab.</li>
-                <li>For Local AI, you can use the 'Detect' button to find common endpoints, or enter it manually. Select your model from the dropdown (you may need to click 'Refresh List').</li>
-                <li>For Online Services, select your provider, enter your API Key, and the specific model name.</li>
+                <li>In the 'AI Assistant' tab, click the settings icon &#x2699; next to the 'Send' button.</li>
+                <li>Click 'Advanced Settings...' to open the main configuration dialog.</li>
+                <li><b>For Local AI:</b>
+                    <ul>
+                        <li>Go to the 'Local AI' tab.</li>
+                        <li>Use the 'Detect Running Services' button to automatically find Ollama/LMStudio, or enter the endpoint manually (e.g., <code>http://localhost:11434/api/chat</code> for Ollama).</li>
+                        <li>Enter the name of the model you have downloaded (e.g., <code>llama3</code>).</li>
+                    </ul>
+                </li>
+                <li><b>For Online Services:</b>
+                    <ul>
+                        <li>Go to the 'Online Services' tab.</li>
+                        <li>Select your provider (e.g., 'OpenAI').</li>
+                        <li>Enter your API Key and the model name you wish to use (e.g., <code>gpt-4-turbo</code>).</li>
+                    </ul>
+                </li>
                 <li>Click 'Save'.</li>
             </ol>
 
+            <h2>3. Selecting the Active Model</h2>
+            <p>The new AI settings menu makes switching between your configured models easy.</p>
+            <ol>
+                <li>Click the settings icon &#x2699; in the AI Assistant tab.</li>
+                <li>A menu will appear showing all configured Local and Online models.</li>
+                <li>Simply click on the model you want to use for your next chat. A checkmark will indicate the active model.</li>
+            </ol>
+
+
             <h2>4. Using the AI Features</h2>
             <ul>
-                <li><b>AI Analyst Tab:</b> Paste any text (like scan results) into the input box and use the buttons at the bottom to perform actions like 'Analyze', 'Generate ROE Report', or 'Check for CVEs'.</li>
-                <li><b>Send to AI Analyst Button:</b> After running a scan in the Nmap, Port Scanner, or Subdomain Scanner tools, click the "Send to AI Analyst" button to automatically load the results into the AI Analyst tab.</li>
+                <li><b>AI Assistant Tab:</b> The main AI tab has been redesigned.
+                    <ul>
+                    <li>The left panel contains a categorized list of over 70 prompts. Click any button to load the prompt into the input box.</li>
+                    <li>The main chat view now uses conversational bubbles. Your prompts are on the right, and the AI's responses are on the left.</li>
+                    </ul>
+                </li>
+                <li><b>Send to AI Analyst Button:</b> After running a scan in the Nmap, Port Scanner, or Subdomain Scanner tools, click the "Send to AI Analyst" button to automatically load the results into the AI Assistant tab for analysis.</li>
             </ul>
         </body>
         </html>
@@ -1143,7 +1158,7 @@ class GScapy(QMainWindow):
     def __init__(self):
         """Initializes the main window, UI components, and internal state."""
         super().__init__()
-        self.setWindowTitle("GScapy - The Modern Scapy Interface")
+        self.setWindowTitle("GScapy + AI - The Modern Scapy Interface with AI")
         # Construct path to icon relative to the script's location for robustness
         script_dir = os.path.dirname(os.path.realpath(__file__))
         icon_path = os.path.join(script_dir, "icons", "shield.svg")
@@ -1294,35 +1309,38 @@ class GScapy(QMainWindow):
             with open(settings_file, 'r') as f:
                 settings = json.load(f)
 
-            active_tab_index = settings.get("provider_tab_index", 0)
+            active_provider = settings.get("active_provider", "local_ai")
+            active_model = settings.get("active_model")
             headers = {}
 
-            if active_tab_index == 0: # Local AI
+            if not active_model:
+                self._append_ai_message("No active AI model selected. Please choose one from the AI Settings menu (the gear icon).", is_user=False, is_error=True)
+                return
+
+            if active_provider == "local_ai":
                 provider_settings = settings.get("local_ai", {})
                 endpoint = provider_settings.get("endpoint")
-                model = provider_settings.get("model")
-            else: # Online Services
+                model = active_model
+            else: # It's an online service
                 online_settings = settings.get("online_ai", {})
-                provider_index = online_settings.get("selected_provider_index", 0)
-                provider_name = ["OpenAI", "Gemini", "Grok", "DeepSeek", "Qwen"][provider_index]
-
+                provider_name = active_provider
                 provider_data = online_settings.get(provider_name, {})
                 api_key = provider_data.get("api_key")
-                model = provider_data.get("model")
+                model = active_model
 
                 if not api_key:
-                    self._append_ai_message(f"API Key for {provider_name} is required.", is_user=False, is_error=True)
+                    self._append_ai_message(f"API Key for the active provider ({provider_name}) is required. Please set it in the advanced AI Settings.", is_user=False, is_error=True)
                     return
 
                 if provider_name == "OpenAI":
                     endpoint = "https://api.openai.com/v1/chat/completions"
                     headers["Authorization"] = f"Bearer {api_key}"
                 else:
-                    self._append_ai_message(f"The provider '{provider_name}' is not yet supported.", is_user=False, is_error=True)
+                    self._append_ai_message(f"The online provider '{provider_name}' is not yet supported for sending messages.", is_user=False, is_error=True)
                     return
 
             if not endpoint or not model:
-                self._append_ai_message("API endpoint and model name must be set in AI Settings.", is_user=False, is_error=True)
+                self._append_ai_message("API endpoint and model name for the active provider are not configured correctly in AI Settings.", is_user=False, is_error=True)
                 return
 
         except Exception as e:
@@ -1343,28 +1361,44 @@ class GScapy(QMainWindow):
     def _on_ai_analysis_error(self, error_message):
         self._append_ai_message(error_message, is_user=False, is_error=True)
 
-    def _append_ai_message(self, content, is_user, is_status=False, is_error=False):
+    def _append_ai_message(self, content, is_user, is_status=False, is_error=False, is_suggestion=False):
         # Remove the "Querying..." status message before adding the real response
         if not is_status and not is_user:
             cursor = self.ai_chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)
             cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
-            # A simple check to see if the last block is the status message
             if "<i>Querying AI... Please wait.</i>" in cursor.selectedText():
                 cursor.removeSelectedText()
-                # Also remove the "AI Assistant:" part of the status line
                 cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor)
                 if "<b>AI Assistant:</b>" in cursor.selection().toHtml():
                     cursor.removeSelectedText()
 
+        # Define bubble styles
+        user_style = "background-color: #3d5a80; color: #f0f0f0; border-radius: 15px; padding: 10px; margin: 5px 50px 5px 5px; text-align: right;"
+        ai_style = "background-color: #4CAF50; color: white; border-radius: 15px; padding: 10px; margin: 5px 5px 5px 50px; text-align: left;"
+        error_style = "background-color: #d32f2f; color: white; border-radius: 15px; padding: 10px; margin: 5px 5px 5px 50px;"
+        status_style = "color: #aaa; text-align: center; margin: 10px;"
+        suggestion_style = "background-color: #424242; color: #e0e0e0; border: 1px solid #616161; border-radius: 15px; padding: 8px; margin: 5px 20%; text-align: center;"
+
+        html = ""
         if is_user:
-            html = f"<p style='color:#8be9fd;'><b>You:</b></p><p>{content.replace(os.linesep, '<br>')}</p><hr>"
+            align = 'right'
+            bubble_html = f"<div style='{user_style}'><b>You</b><br>{content.replace(os.linesep, '<br>')}</div>"
         elif is_error:
-            html = f"<p style='color:#ff5555;'><b>AI Error:</b></p><p>{content.replace(os.linesep, '<br>')}</p><hr>"
+            align = 'left'
+            bubble_html = f"<div style='{error_style}'><b>AI Error</b><br>{content.replace(os.linesep, '<br>')}</div>"
         elif is_status:
-            html = f"<p style='color:#50fa7b;'><b>AI Assistant:</b></p><p>{content}</p>" # No <hr> for status
-        else:
-            html = f"<p style='color:#50fa7b;'><b>AI Assistant:</b></p><p>{content.replace(os.linesep, '<br>')}</p><hr>"
+            align = 'center'
+            bubble_html = f"<div style='{status_style}'>{content}</div>"
+        elif is_suggestion:
+            align = 'center'
+            bubble_html = f"<div style='{suggestion_style}'><i>Suggestion: {content}</i></div>"
+        else: # Regular AI message
+            align = 'left'
+            bubble_html = f"<div style='{ai_style}'><b>AI Assistant</b><br>{content.replace(os.linesep, '<br>')}</div>"
+
+        # The alignment div is crucial for QTextBrowser
+        html = f"<div align='{align}'>{bubble_html}</div>"
 
         self.ai_chat_history.append(html)
         self.ai_chat_history.verticalScrollBar().setValue(self.ai_chat_history.verticalScrollBar().maximum())
@@ -1379,29 +1413,16 @@ class GScapy(QMainWindow):
 
         self._run_ai_task(user_text)
 
-    def _apply_ai_prompt(self):
-        prompt_text = self.ai_prompts.get(self.ai_prompt_combo.currentText())
-        if not prompt_text:
-            return
-
-        current_data = self.ai_input_text.toPlainText().strip()
-        if current_data:
-            new_text = f"{prompt_text}\n\n--- DATA ---\n{current_data}\n--- END OF DATA ---"
-        else:
-            new_text = prompt_text
-        self.ai_input_text.setPlainText(new_text)
-
-
     def _show_about_dialog(self):
         about_text = """
-        <b>GScapy v2.6</b>
-        <p>A graphical interface for the Scapy packet manipulation tool.</p>
-        <p>This application provides tools for sniffing, crafting, and analyzing network packets.</p>
+        <b>GScapy + AI v3.0</b>
+        <p>The Modern Scapy Interface with AI.</p>
+        <p>This application provides tools for sniffing, crafting, and analyzing network packets, with AI-powered analysis and guidance.</p>
         <br>
         <p><b>Developer:</b><br>Mohammadmahdi Farhadianfard (ao ga nai 😁)<br>
         mohammadmahdi.farhadianfard@gmail.com</p>
         """
-        QMessageBox.about(self, "About GScapy", about_text)
+        QMessageBox.about(self, "About GScapy + AI", about_text)
 
     def _create_status_bar(self):
         self.status_bar = QStatusBar(self); self.setStatusBar(self.status_bar); self.status_bar.showMessage("Ready")
@@ -1515,7 +1536,14 @@ class GScapy(QMainWindow):
     def _create_main_tabs(self):
         """Creates the main QTabWidget and adds all the tool tabs."""
         self.tab_widget = QTabWidget()
-        self.tab_widget.setStyleSheet("QTabWidget::tab-bar { alignment: center; }")
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::tab-bar {
+                alignment: center;
+            }
+            QTabBar::tab:!selected:!last {
+                border-right: 1px solid #444;
+            }
+        """)
         self.main_layout.addWidget(self.tab_widget)
         self.tab_widget.addTab(self._create_sniffer_tab(), QIcon("icons/search.svg"), "Packet Sniffer")
         self.tab_widget.addTab(self._create_crafter_tab(), QIcon("icons/edit-3.svg"), "Packet Crafter")
@@ -2660,34 +2688,231 @@ class GScapy(QMainWindow):
         prompt_box = QGroupBox("Prompt Helper")
         prompt_layout = QHBoxLayout(prompt_box)
 
+        # This dictionary is now the master list of all prompts
         self.ai_prompts = {
-            "-- Select a Prompt --": "",
-            "Analyze for Vulnerabilities": "Analyze the following data for potential security vulnerabilities, misconfigurations, or points of interest for a penetration tester. Provide a summary of your findings and suggest next steps.",
-            "Explain These Results": "Explain the following scan results in simple terms. What was the tool trying to do, and what do the results mean?",
-            "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
-            "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
-            "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
+            "Threat Detection & Analysis": {
+                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
+                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
+                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
+                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
+                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
+                "Scan Database Logs for Breaches": "Scan the following database logs and identify any unauthorized access attempts or unusual data queries. Look for queries from unexpected IP addresses, unusually large data exports, or repeated failed login attempts.",
+                "Detect DNS Hijacking": "Analyze the following DNS traffic and detect any signs of domain hijacking or DNS poisoning. Look for unexpected responses to DNS queries or traffic being redirected to suspicious IP addresses.",
+                "Identify Network Misconfigurations": "Perform a vulnerability scan on the following list of network devices and identify any potential weaknesses or misconfigurations, such as open management ports, default credentials, or outdated firmware.",
+                "Detect Data Exfiltration": "Analyze the following network traffic patterns to detect any large data exfiltration or unusual data transfers. Look for large, encrypted uploads to external sites or sustained outbound connections.",
+                "Identify Brute-Force Attacks": "Monitor the following system login attempts and identify any brute-force attacks or login anomalies. Look for a high volume of failed logins from a single IP or for a single user account.",
+            },
+            "Incident Response": {
+                "Fuzz for XML Files with Gobuster": "How can I fuzz for .xml files on a web server at {TARGET_URL} using gobuster?",
+                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
+                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
+                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
+                "Forensic Analysis Guide": "Assist in performing a forensic analysis on a compromised Linux system to identify the incident’s root cause. What are the first 5 steps I should take?",
+                "Coordinate IR Team Communication": "Act as a facilitator for communication and collaboration among incident response team members during a major security incident. What are the key pieces of information to share?",
+                "Contain a Spreading Malware": "Recommend and execute incident containment measures to minimize further damage from a malware infection that is spreading across the corporate network.",
+                "Generate Incident Report": "Assist in generating an incident response report with detailed timelines, actions taken, and lessons learned from the provided data.",
+                "Engage Law Enforcement": "Guide an incident response team through the process of notifying and engaging law enforcement agencies for a cybercrime event.",
+                "Post-Incident Review Guide": "Assist in conducting a post-incident review to identify vulnerabilities and improve incident response procedures after a data breach.",
+            },
+            "Vulnerability Assessment & PenTesting": {
+                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
+                "Simulate Phishing Campaign": "I need to simulate a phishing campaign targeting employees to assess their susceptibility and raise awareness. Provide three different email templates for this.",
+                "Penetration Test Web Application": "Perform a penetration test on the following web application description to identify potential security flaws and suggest remediation measures. The application is a customer portal at {TARGET_URL}.",
+                "Secure Wireless Network": "Analyze the following wireless network configuration and recommend security enhancements to prevent unauthorized access. The current setup uses WPA2-PSK with a known weak password.",
+                "Harden Web Server": "Review the following Nginx server configuration and recommend hardening measures to protect against known vulnerabilities and exploits.",
+                "Evaluate Physical Security": "Assess the effectiveness of physical security controls by simulating unauthorized access attempts to a restricted data center. What are common techniques to test?",
+                "Test DDoS Resilience": "Evaluate the resilience of our network infrastructure against a DDoS attack. Propose three different mitigation strategies we could implement.",
+                "Assess IoT Device Security": "Conduct a vulnerability assessment on an IoT camera at IP {TARGET_IP}. Identify potential entry points for attackers and recommend security measures.",
+                "Audit Third-Party Vendor Security": "Assess the security posture of a third-party vendor by conducting a security audit. Provide a checklist of the top 10 things to review.",
+                "Review Incident Response Plan": "Review our organization’s incident response plan and simulate a ransomware attack scenario to identify areas for improvement.",
+                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
+                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
+                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
+                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
+                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
+            },
+            "Scripting & Automation": {
+                "Generate Nmap Port Scan Script": "Generate a bash script that automates port scanning with Nmap for a list of IPs in a file named 'targets.txt' and saves the output for each IP.",
+                "Create Python Scapy Script": "Write a Python script using Scapy to send a TCP SYN packet to port 80 of a target IP address and print whether the port is open or closed.",
+                "Automate Log Analysis with Python": "Write a Python script to parse an Apache access log file and identify the top 10 IP addresses with the most requests.",
+                "PowerShell for User Audit": "Write a PowerShell script to audit all local user accounts on a Windows machine and flag any that have not been logged into for over 90 days.",
+                "Bash Script to Check for Open Ports": "Create a simple bash script that uses 'netcat' to check if a specific port is open on a given host.",
+                "Detect Registry Changes with ELK": "Provide an ELK query to detect changes in the Windows Registry, specifically focusing on keys related to startup programs.",
+                "Python Script to Detect XSS": "Write a Python script that takes a URL as input and checks for basic reflected XSS vulnerabilities by testing common payloads in URL parameters.",
+                "Automate Subdomain Enumeration": "Create a bash script that chains together 'subfinder' and 'httpx' to find live subdomains for a given domain.",
+                "PowerShell to Disable Inactive Accounts": "Write a PowerShell script for Active Directory that finds user accounts that have been inactive for 60 days and disables them.",
+                "Python Script for Password Strength": "Write a Python script that takes a password as input and rates its strength based on length, and inclusion of uppercase, lowercase, numbers, and symbols.",
+            },
+            "Policy & Compliance": {
+                "Draft Data Protection Policy": "Provide guidance on drafting a data protection and privacy policy in accordance with GDPR for a small e-commerce company.",
+                "Update Security Policies": "Review the following (outdated) security policy and suggest updates to align with modern industry best practices and the evolving threat landscape.",
+                "Develop Password Management Policy": "Assist in developing a password management policy that promotes strong, unique passwords and the use of multi-factor authentication (MFA).",
+                "Create Mobile Device Policy (BYOD)": "Offer recommendations for creating a mobile device management policy (MDM) to secure employee-owned devices (BYOD) and protect corporate data.",
+                "Establish Network Access Control Policy": "Assist in establishing a network access control (NAC) policy to ensure only authorized and compliant devices can connect to the organization’s network.",
+                "Outline Incident Response Policy": "Provide guidance on creating an incident response policy that clearly outlines roles, responsibilities, communication channels, and escalation procedures.",
+                "Define Patch Management Policy": "Help define a patch management policy that ensures timely updates and vulnerability remediation across all systems and software, with a focus on critical assets.",
+                "Develop Encryption Policy": "Assist in developing a data encryption policy to protect sensitive data at rest and in transit, specifying required algorithms and key management procedures.",
+                "Create Employee Training Policy": "Guide the creation of an employee security training and awareness policy to promote a security-conscious culture within the organization.",
+                "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
+            },
         }
-        self.ai_prompt_combo = QComboBox()
-        self.ai_prompt_combo.addItems(self.ai_prompts.keys())
-        prompt_layout.addWidget(self.ai_prompt_combo)
 
-        use_prompt_btn = QPushButton("Use Prompt")
-        use_prompt_btn.clicked.connect(self._apply_ai_prompt)
-        prompt_layout.addWidget(use_prompt_btn)
-        main_layout.addWidget(prompt_box)
+        # --- Prompt UI Setup ---
+        # Main container for all prompt-related UI
+        prompt_container = QWidget()
+        prompt_container_layout = QVBoxLayout(prompt_container)
+        prompt_container_layout.setContentsMargins(0,0,0,0)
+
+        # Create a scroll area for the prompts
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_area.setWidget(scroll_widget)
+
+        # Populate the scroll area with prompts
+        for category, prompts in self.ai_prompts.items():
+            category_label = QLabel(f"<b>{category}</b>")
+            category_label.setStyleSheet("font-size: 12pt; margin-top: 10px;")
+            scroll_layout.addWidget(category_label)
+            for prompt_name, prompt_text in prompts.items():
+                prompt_button = QPushButton(prompt_name)
+                prompt_button.setToolTip(prompt_text)
+                prompt_button.setStyleSheet("text-align: left; padding: 8px;")
+                # Use a lambda to capture the correct prompt_text for each button
+                prompt_button.clicked.connect(lambda checked, text=prompt_text: self.ai_input_text.setPlainText(text))
+                scroll_layout.addWidget(prompt_button)
+
+        prompt_container_layout.addWidget(scroll_area)
+        main_layout.addWidget(prompt_container)
+
 
         # --- Input & Send ---
+        input_layout = QHBoxLayout() # Layout for text box and buttons
+
         self.ai_input_text = QTextEdit()
-        self.ai_input_text.setPlaceholderText("Enter your message, paste data, or use a prompt from above...")
-        self.ai_input_text.setFixedHeight(120)
-        main_layout.addWidget(self.ai_input_text)
+        self.ai_input_text.setPlaceholderText("Enter your message, paste data, or select a prompt from above...")
+        self.ai_input_text.setFixedHeight(100)
+        input_layout.addWidget(self.ai_input_text)
 
-        send_button = QPushButton("Send Message")
+        # Vertical layout for the two buttons
+        button_vbox = QVBoxLayout()
+        send_button = QPushButton("Send")
+        send_button.setToolTip("Send the message to the AI")
         send_button.clicked.connect(self._send_chat_message)
-        main_layout.addWidget(send_button)
 
+        self.ai_settings_btn = QPushButton()
+        self.ai_settings_btn.setIcon(QIcon(os.path.join("icons", "tool.svg")))
+        self.ai_settings_btn.setToolTip("Configure AI Models")
+        self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
+
+        button_vbox.addWidget(send_button)
+        button_vbox.addWidget(self.ai_settings_btn)
+
+        input_layout.addLayout(button_vbox) # Add the vertical button layout to the main input layout
+        main_layout.addLayout(input_layout)
+
+        self._show_initial_ai_suggestions()
         return widget
+
+    def _show_initial_ai_suggestions(self):
+        """Shows a few random prompts in the chat window on startup."""
+        self.ai_chat_history.clear()
+        self.ai_chat_history.setHtml("<h1 align='center'>GScapy + AI Assistant</h1>")
+
+        all_prompts = []
+        for category in self.ai_prompts.values():
+            all_prompts.extend(category.keys())
+
+        if len(all_prompts) > 3:
+            suggestions = random.sample(all_prompts, 3)
+            self._append_ai_message("<b>Welcome! Here are a few things you could ask:</b>", is_user=False, is_status=True)
+            for suggestion in suggestions:
+                self._append_ai_message(suggestion, is_user=False, is_suggestion=True)
+
+    def _show_ai_settings_menu(self):
+        """Creates and shows a popup menu to select the active AI model."""
+        settings_file = "ai_settings.json"
+        try:
+            if not os.path.exists(settings_file):
+                # If the file doesn't exist, prompt the user to create it.
+                if self._show_ai_settings_dialog() == QDialog.DialogCode.Rejected:
+                    return # User cancelled the settings dialog
+
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+        except (IOError, json.JSONDecodeError) as e:
+            QMessageBox.warning(self, "Error", f"Could not load AI settings: {e}")
+            return
+
+        menu = QMenu(self)
+        provider_group = QActionGroup(self)
+        provider_group.setExclusive(True)
+
+        active_provider = settings.get("active_provider", "local_ai")
+        active_model = settings.get("active_model", "")
+
+        # --- Local AI Submenu ---
+        local_menu = menu.addMenu("Local AI")
+        local_settings = settings.get("local_ai", {})
+        local_model_name = local_settings.get("model", "N/A")
+        action = QAction(f"Local: {local_model_name}", self)
+        action.setCheckable(True)
+        if active_provider == "local_ai":
+            action.setChecked(True)
+        action.triggered.connect(lambda chk, p="local_ai", m=local_model_name: self._set_active_ai_provider(p, m))
+        local_menu.addAction(action)
+        provider_group.addAction(action)
+
+
+        # --- Online Services Submenu ---
+        online_menu = menu.addMenu("Online Services")
+        online_settings = settings.get("online_ai", {})
+        provider_names = ["OpenAI", "Gemini", "Grok", "DeepSeek", "Qwen"]
+
+        for provider_name in provider_names:
+            provider_data = online_settings.get(provider_name, {})
+            api_key = provider_data.get("api_key")
+            model_name = provider_data.get("model")
+
+            if api_key and model_name:
+                action = QAction(f"{provider_name}: {model_name}", self)
+                action.setCheckable(True)
+                # Check if this is the currently active provider and model
+                if active_provider == provider_name and active_model == model_name:
+                    action.setChecked(True)
+
+                action.triggered.connect(lambda chk, p=provider_name, m=model_name: self._set_active_ai_provider(p, m))
+                online_menu.addAction(action)
+                provider_group.addAction(action)
+
+        menu.addSeparator()
+        menu.addAction("Advanced Settings...", self._show_ai_settings_dialog)
+
+        # Show the menu below the settings button
+        menu.exec(self.ai_settings_btn.mapToGlobal(self.ai_settings_btn.rect().bottomLeft()))
+
+    def _set_active_ai_provider(self, provider_name, model_name):
+        """Saves the selected AI provider and model as the active one."""
+        settings_file = "ai_settings.json"
+        try:
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+            else:
+                settings = {}
+
+            settings['active_provider'] = provider_name
+            settings['active_model'] = model_name
+
+            with open(settings_file, 'w') as f:
+                json.dump(settings, f, indent=4)
+
+            self.status_bar.showMessage(f"AI Provider set to {provider_name} ({model_name})", 3000)
+            logging.info(f"AI Provider set to {provider_name} ({model_name})")
+
+        except (IOError, json.JSONDecodeError) as e:
+            QMessageBox.warning(self, "Error", f"Could not save AI settings: {e}")
 
     def _create_system_info_tab(self):
         """Creates the System Info tab with a redesigned, more modern layout."""
