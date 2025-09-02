@@ -1528,12 +1528,13 @@ class GScapy(QMainWindow):
         self.send_button.setEnabled(True)
 
 
-    def _append_ai_message(self, content, is_user, is_error=False, is_suggestion=False):
+    def _append_ai_message(self, content, is_user, is_error=False, is_suggestion=False, is_status=False):
         # Gemini-inspired colors and styles
         user_style = "background-color: #4f5159; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 10px 5px 80px;"
         ai_style = "background-color: #3c4043; color: #e8eaed; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
         error_style = "background-color: #d32f2f; color: white; border-radius: 18px; padding: 12px; margin: 5px 80px 5px 10px;"
         suggestion_style = "background-color: #3c4043; color: #e8eaed; border: 1px solid #5f6368; border-radius: 18px; padding: 10px; margin: 5px 25%; text-align: center;"
+        status_style = "color: #aaa; text-align: center; margin: 10px;"
 
         bubble_html = ""
         if is_user:
@@ -1543,6 +1544,9 @@ class GScapy(QMainWindow):
         elif is_error:
             align = 'left'
             bubble_html = f"<div style='{error_style}'><b>AI Error</b><br>{content.replace(os.linesep, '<br>')}</div>"
+        elif is_status:
+            align = 'center'
+            bubble_html = f"<div style='{status_style}'>{content}</div>"
         elif is_suggestion:
             align = 'center'
             bubble_html = f"<div style='{suggestion_style}'><i>Suggestion: {content}</i></div>"
