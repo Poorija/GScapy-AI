@@ -33,17 +33,17 @@ from qt_material import apply_stylesheet, list_themes
 from PyQt6.QtGui import QActionGroup, QPixmap, QImage, QPalette
 
 def create_themed_icon(icon_path, color_str):
-    """Loads an SVG, injects a color, and returns a QIcon."""
+    """Loads an SVG, intelligently replaces its color, and returns a QIcon."""
     try:
         with open(icon_path, 'r', encoding='utf-8') as f:
             svg_data = f.read()
 
-        # A more robust way to set color is to add a fill attribute
-        # to the parent <svg> tag. This works for simple, single-color icons.
-        if '<svg' in svg_data:
-            themed_svg_data = svg_data.replace('<svg', f'<svg fill="{color_str}"')
-        else:
-            themed_svg_data = svg_data # Fallback if no <svg> tag found
+        # First, try to replace a stroke color in a style block (for paper-airplane.svg)
+        themed_svg_data, count = re.subn(r'stroke:#[0-9a-fA-F]{6}', f'stroke:{color_str}', svg_data)
+
+        # If no stroke was found in a style, fall back to injecting a fill attribute (for gear.svg)
+        if count == 0 and '<svg' in themed_svg_data:
+            themed_svg_data = themed_svg_data.replace('<svg', f'<svg fill="{color_str}"')
 
         image = QImage.fromData(themed_svg_data.encode('utf-8'))
         pixmap = QPixmap.fromImage(image)
@@ -1046,7 +1046,6 @@ class AIAnalysisThread(QThread):
             if api_key and provider == "OpenAI":
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            # The payload now includes the 'stream': True parameter
             payload = {
                 "model": model,
                 "messages": [{"role": "user", "content": self.prompt}],
@@ -1056,53 +1055,39 @@ class AIAnalysisThread(QThread):
             with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60) as response:
                 response.raise_for_status()
 
-                # These flags help manage the stream state
                 is_thinking_phase = False
                 is_answer_phase = False
 
                 for line in response.iter_lines():
-                    if self.stop_event.is_set():
-                        break
-                    if not line:
-                        continue
+                    if self.stop_event.is_set(): break
+                    if not line: continue
 
                     line = line.decode('utf-8')
-                    # For Ollama, the response is a series of JSON objects, one per line
-                    if line.startswith('data:'): # Server-Sent Events format
+                    if line.startswith('data:'):
                         line = line[5:].strip()
 
                     try:
                         data = json.loads(line)
-                        chunk = ""
-                        # --- Handle response format for different providers ---
-                        # Ollama format
-                        if 'message' in data:
-                            chunk = data['message'].get('content', '')
-                        # OpenAI format
-                        elif 'choices' in data and data['choices']:
-                            delta = data['choices'][0].get('delta', {})
-                            if 'content' in delta:
-                                chunk = delta['content'] or ""
-                        # Fallback for simple completion APIs
-                        elif 'response' in data:
-                            chunk = data.get('response','')
+                        chunk = data.get('message', {}).get('content', '') or \
+                                (data.get('choices', [{}])[0].get('delta', {}).get('content', '')) or \
+                                data.get('response', '')
 
-                        if not chunk:
-                            continue
+                        if not chunk: continue
 
-                        # --- State management for THINKING/ANSWER ---
-                        if "[THINKING]" in chunk:
+                        # Use regex for case-insensitive tag matching and removal
+                        if re.search(r'<thinking>', chunk, re.IGNORECASE):
                             is_thinking_phase = True
-                            chunk = chunk.replace("[THINKING]", "").strip()
+                            is_answer_phase = False
+                            chunk = re.sub(r'<\/?thinking>', '', chunk, flags=re.IGNORECASE).strip()
 
-                        if "[ANSWER]" in chunk:
+                        if re.search(r'<answer>', chunk, re.IGNORECASE):
                             is_thinking_phase = False
                             is_answer_phase = True
-                            chunk = chunk.replace("[ANSWER]", "").strip()
+                            chunk = re.sub(r'<\/?answer>', '', chunk, flags=re.IGNORECASE).strip()
 
                         if chunk:
-                            # Emit the chunk with its current state
-                            self.response_ready.emit(chunk, is_thinking_phase, not is_thinking_phase)
+                            # The third parameter was incorrect, it should be is_answer_phase
+                            self.response_ready.emit(chunk, is_thinking_phase, is_answer_phase)
 
                     except json.JSONDecodeError:
                         logging.warning(f"Could not decode JSON from stream line: {line}")
@@ -1338,6 +1323,9 @@ class ThinkingWidget(QWidget):
         return not self.is_expanded
 
 class ChatBubble(QWidget):
+    # Signal to notify the container that the size hint has changed
+    sizeHintChanged = pyqtSignal(QSize)
+
     def __init__(self, text, is_user, is_streaming=False, parent=None):
         super().__init__(parent)
         self.is_user = is_user
@@ -1353,7 +1341,6 @@ class ChatBubble(QWidget):
         self.set_stylesheet()
 
     def set_stylesheet(self):
-        # Increased horizontal padding to prevent text from touching the curved edges.
         padding = "12px 15px 12px 15px"
         if self.is_user:
             self.label.setStyleSheet(f"""
@@ -1376,10 +1363,9 @@ class ChatBubble(QWidget):
             self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
     def append_text(self, text_chunk):
-        current_text = self.label.text()
-        self.label.setText(current_text + text_chunk)
-        # The size hint is now dynamic, so we need to trigger an update.
-        self.updateGeometry()
+        self.label.setText(self.label.text() + text_chunk)
+        # After changing text, emit the signal with the new size hint
+        self.sizeHintChanged.emit(self.sizeHint())
 
     def finish_streaming(self):
         self.is_streaming = False
@@ -1388,8 +1374,7 @@ class ChatBubble(QWidget):
     def sizeHint(self):
         # Override sizeHint to provide an accurate size based on wrapped text.
         if self.parentWidget():
-            # Cast to int to fix TypeError with setFixedWidth
-            width = int(self.parentWidget().width() * 0.7)
+            width = int(self.parentWidget().width() * 0.75) # Use a bit more width
             self.label.setFixedWidth(width)
         return self.label.sizeHint()
 
@@ -1625,13 +1610,17 @@ class AIAssistantTab(QWidget):
                  self.thinking_widget.toggle_content()
             if self.current_ai_bubble is None:
                 item = QListWidgetItem(self.chat_list)
-                self.current_ai_bubble = ChatBubble("", is_user=False, is_streaming=True)
+                # Parent the bubble to the chat list for context
+                self.current_ai_bubble = ChatBubble("", is_user=False, is_streaming=True, parent=self.chat_list)
+
+                # Connect the bubble's sizeHintChanged signal to the item's setSizeHint
+                self.current_ai_bubble.sizeHintChanged.connect(item.setSizeHint)
+
                 item.setSizeHint(self.current_ai_bubble.sizeHint())
                 self.chat_list.addItem(item)
                 self.chat_list.setItemWidget(item, self.current_ai_bubble)
+
             self.current_ai_bubble.append_text(chunk)
-            # A more robust way to ensure the widget resizes is to update the whole list's geometry
-            self.chat_list.updateGeometries()
             self.chat_list.scrollToBottom()
 
     def on_ai_thread_finished(self):
