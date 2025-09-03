@@ -80,7 +80,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
     QHeaderView, QInputDialog, QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup, QPoint
+from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup, QPoint, QSize
 from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
 
 
@@ -1387,8 +1387,10 @@ class ChatBubble(QWidget):
 
     def sizeHint(self):
         # Override sizeHint to provide an accurate size based on wrapped text.
-        # This is the key to fixing the text cutoff issue.
-        self.label.setFixedWidth(self.parentWidget().width() * 0.7)
+        if self.parentWidget():
+            # Cast to int to fix TypeError with setFixedWidth
+            width = int(self.parentWidget().width() * 0.7)
+            self.label.setFixedWidth(width)
         return self.label.sizeHint()
 
 class AIAssistantTab(QWidget):
@@ -1485,7 +1487,6 @@ class AIAssistantTab(QWidget):
         chat_layout.setContentsMargins(10, 10, 10, 10)
         chat_layout.setSpacing(10)
 
-        # Add a static header
         header = QTextBrowser()
         header.setHtml("""
             <div align="center">
@@ -1520,12 +1521,10 @@ class AIAssistantTab(QWidget):
         self.user_input.setStyleSheet("border: none; background-color: transparent; font-size: 14px;")
         input_frame_layout.addWidget(self.user_input)
 
-        self.send_button = QPushButton("\u25B6")
-        self.send_button.setFixedSize(30, 30)
-        self.send_button.setStyleSheet("""
-            QPushButton { background-color: #007bff; color: white; border-radius: 15px; font-size: 16px; }
-            QPushButton:hover { background-color: #0056b3; }
-        """)
+        self.send_button = QPushButton()
+        self.send_button.setFixedSize(32, 32)
+        self.send_button.setStyleSheet("QPushButton { border: none; }")
+        self.send_button.setToolTip("Send Message")
         input_frame_layout.addWidget(self.send_button)
 
         bottom_controls_layout.addWidget(input_frame)
@@ -1534,7 +1533,6 @@ class AIAssistantTab(QWidget):
         self.ai_settings_btn.setToolTip("Configure & Select AI Models")
         self.ai_settings_btn.setFixedSize(32, 32)
         self.ai_settings_btn.setStyleSheet("QPushButton { border: none; }")
-        self.update_theme() # Set initial themed icon
         bottom_controls_layout.addWidget(self.ai_settings_btn)
 
         chat_layout.addLayout(bottom_controls_layout)
@@ -1545,10 +1543,14 @@ class AIAssistantTab(QWidget):
         self.user_input.returnPressed.connect(self.send_message)
         self.ai_settings_btn.clicked.connect(self._show_ai_settings_menu)
 
+        self.update_theme() # Set initial themed icons
+
     def update_theme(self):
         """Updates the icon color to match the new theme."""
         text_color = self.palette().color(QPalette.ColorRole.WindowText).name()
         self.ai_settings_btn.setIcon(create_themed_icon(os.path.join("icons", "gear.svg"), text_color))
+        self.send_button.setIcon(create_themed_icon(os.path.join("icons", "paper-airplane.svg"), text_color))
+        self.send_button.setIconSize(QSize(24, 24))
 
     def _populate_prompts(self):
         for category, prompts in self.ai_prompts.items():
