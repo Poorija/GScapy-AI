@@ -33,14 +33,17 @@ from qt_material import apply_stylesheet, list_themes
 from PyQt6.QtGui import QActionGroup, QPixmap, QImage, QPalette
 
 def create_themed_icon(icon_path, color_str):
-    """Loads an SVG, replaces its color, and returns a QIcon."""
+    """Loads an SVG, injects a color, and returns a QIcon."""
     try:
         with open(icon_path, 'r', encoding='utf-8') as f:
             svg_data = f.read()
 
-        # Replace fill and stroke colors. This is a bit brittle and assumes simple SVGs.
-        themed_svg_data = re.sub(r'fill="[^"]*"', f'fill="{color_str}"', svg_data)
-        themed_svg_data = re.sub(r'stroke="[^"]*"', f'stroke="{color_str}"', themed_svg_data)
+        # A more robust way to set color is to add a fill attribute
+        # to the parent <svg> tag. This works for simple, single-color icons.
+        if '<svg' in svg_data:
+            themed_svg_data = svg_data.replace('<svg', f'<svg fill="{color_str}"')
+        else:
+            themed_svg_data = svg_data # Fallback if no <svg> tag found
 
         image = QImage.fromData(themed_svg_data.encode('utf-8'))
         pixmap = QPixmap.fromImage(image)
@@ -1398,13 +1401,69 @@ class AIAssistantTab(QWidget):
 
         self.ai_prompts = {
             "Threat Detection & Analysis": {
-                "Analyze Firewall Logs": "Analyze the following firewall logs for suspicious patterns.",
-                "Review Web Server Logs for Attacks": "Review these web server logs for SQL injection or XSS attempts.",
+                "Analyze Firewall Logs": "Analyze the following firewall logs and identify any unauthorized or suspicious inbound connections. Look for patterns of repeated denied connections from a single source, connections to non-standard ports, or traffic originating from known malicious IP addresses.",
+                "Flag Abnormal Processes": "Monitor the following list of system processes and flag any abnormal behavior or potential malware indicators. Look for unusually named processes, processes with high CPU/memory usage, or processes making unexpected network connections.",
+                "Deep Scan for Stealthy Malware": "Given the following network traffic dump, conduct a deep scan of the network to identify any hidden or stealthy malware infections. Look for covert channels, unusual DNS queries, or encrypted traffic to unknown endpoints.",
+                "Detect Phishing Attempts": "Analyze the following email headers and content to detect phishing attempts or email spoofing. Check for mismatches in 'From' and 'Reply-To' fields, suspicious links, urgent language, and generic greetings.",
+                "Review Web Server Logs for Attacks": "Review the following web server logs for any unusual HTTP requests or patterns indicative of an attack, such as SQL injection, cross-site scripting (XSS), or directory traversal attempts.",
+                "Scan Database Logs for Breaches": "Scan the following database logs and identify any unauthorized access attempts or unusual data queries. Look for queries from unexpected IP addresses, unusually large data exports, or repeated failed login attempts.",
+                "Detect DNS Hijacking": "Analyze the following DNS traffic and detect any signs of domain hijacking or DNS poisoning. Look for unexpected responses to DNS queries or traffic being redirected to suspicious IP addresses.",
+                "Identify Network Misconfigurations": "Perform a vulnerability scan on the following list of network devices and identify any potential weaknesses or misconfigurations, such as open management ports, default credentials, or outdated firmware.",
+                "Detect Data Exfiltration": "Analyze the following network traffic patterns to detect any large data exfiltration or unusual data transfers. Look for large, encrypted uploads to external sites or sustained outbound connections.",
+                "Identify Brute-Force Attacks": "Monitor the following system login attempts and identify any brute-force attacks or login anomalies. Look for a high volume of failed logins from a single IP or for a single user account.",
+            },
+            "Incident Response": {
+                "Fuzz for XML Files with Gobuster": "How can I fuzz for .xml files on a web server at {TARGET_URL} using gobuster?",
+                "Guide Evidence Collection": "Guide an incident response team through collecting and preserving evidence from a compromised Windows server. Include steps for memory acquisition, disk imaging, and log collection.",
+                "Ransomware Recovery Steps": "Assist in restoring systems from a backup to recover from a ransomware attack. Provide a step-by-step plan, including isolating the network, verifying backups, and safely reintroducing systems.",
+                "DDoS Mitigation Plan": "Provide step-by-step instructions to mitigate the impact of a distributed denial-of-service (DDoS) attack targeting our main web server at {TARGET_IP}.",
+                "Forensic Analysis Guide": "Assist in performing a forensic analysis on a compromised Linux system to identify the incident’s root cause. What are the first 5 steps I should take?",
+                "Coordinate IR Team Communication": "Act as a facilitator for communication and collaboration among incident response team members during a major security incident. What are the key pieces of information to share?",
+                "Contain a Spreading Malware": "Recommend and execute incident containment measures to minimize further damage from a malware infection that is spreading across the corporate network.",
+                "Generate Incident Report": "Assist in generating an incident response report with detailed timelines, actions taken, and lessons learned from the provided data.",
+                "Engage Law Enforcement": "Guide an incident response team through the process of notifying and engaging law enforcement agencies for a cybercrime event.",
+                "Post-Incident Review Guide": "Assist in conducting a post-incident review to identify vulnerabilities and improve incident response procedures after a data breach.",
             },
             "Vulnerability Assessment & PenTesting": {
-                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target: ",
-                "Analyze Nmap Scan": "Analyze the following Nmap scan results for vulnerabilities.",
-                "Explain Results to Non-Expert": "Explain these scan results in simple, non-technical terms.",
+                "Scan for SMB Vulnerabilities with Nmap": "How can I scan for SMB vulnerabilities on the subnet {TARGET_SUBNET} using Nmap scripts?",
+                "Simulate Phishing Campaign": "I need to simulate a phishing campaign targeting employees to assess their susceptibility and raise awareness. Provide three different email templates for this.",
+                "Penetration Test Web Application": "Perform a penetration test on the following web application description to identify potential security flaws and suggest remediation measures. The application is a customer portal at {TARGET_URL}.",
+                "Secure Wireless Network": "Analyze the following wireless network configuration and recommend security enhancements to prevent unauthorized access. The current setup uses WPA2-PSK with a known weak password.",
+                "Harden Web Server": "Review the following Nginx server configuration and recommend hardening measures to protect against known vulnerabilities and exploits.",
+                "Evaluate Physical Security": "Assess the effectiveness of physical security controls by simulating unauthorized access attempts to a restricted data center. What are common techniques to test?",
+                "Test DDoS Resilience": "Evaluate the resilience of our network infrastructure against a DDoS attack. Propose three different mitigation strategies we could implement.",
+                "Assess IoT Device Security": "Conduct a vulnerability assessment on an IoT camera at IP {TARGET_IP}. Identify potential entry points for attackers and recommend security measures.",
+                "Audit Third-Party Vendor Security": "Assess the security posture of a third-party vendor by conducting a security audit. Provide a checklist of the top 10 things to review.",
+                "Review Incident Response Plan": "Review our organization’s incident response plan and simulate a ransomware attack scenario to identify areas for improvement.",
+                "Suggest Nmap Command": "Suggest a good Nmap command to run against a target. The target is: ",
+                "Find Exploits for Service": "Find potential exploits for a service running 'Apache 2.4.41' on a Linux server.",
+                "Analyze Nmap Scan": "Analyze the following Nmap scan results for potential vulnerabilities and suggest the next 3 steps for a penetration tester.",
+                "Check for CVEs": "You are a vulnerability analysis expert. Analyze the following scan results for services and versions, then list any known CVEs for them.",
+                "Explain Results to Non-Expert": "Explain the following scan results in simple, non-technical terms. What was the tool trying to do, and what do the results mean?",
+            },
+            "Scripting & Automation": {
+                "Generate Nmap Port Scan Script": "Generate a bash script that automates port scanning with Nmap for a list of IPs in a file named 'targets.txt' and saves the output for each IP.",
+                "Create Python Scapy Script": "Write a Python script using Scapy to send a TCP SYN packet to port 80 of a target IP address and print whether the port is open or closed.",
+                "Automate Log Analysis with Python": "Write a Python script to parse an Apache access log file and identify the top 10 IP addresses with the most requests.",
+                "PowerShell for User Audit": "Write a PowerShell script to audit all local user accounts on a Windows machine and flag any that have not been logged into for over 90 days.",
+                "Bash Script to Check for Open Ports": "Create a simple bash script that uses 'netcat' to check if a specific port is open on a given host.",
+                "Detect Registry Changes with ELK": "Provide an ELK query to detect changes in the Windows Registry, specifically focusing on keys related to startup programs.",
+                "Python Script to Detect XSS": "Write a Python script that takes a URL as input and checks for basic reflected XSS vulnerabilities by testing common payloads in URL parameters.",
+                "Automate Subdomain Enumeration": "Create a bash script that chains together 'subfinder' and 'httpx' to find live subdomains for a given domain.",
+                "PowerShell to Disable Inactive Accounts": "Write a PowerShell script for Active Directory that finds user accounts that have been inactive for 60 days and disables them.",
+                "Python Script for Password Strength": "Write a Python script that takes a password as input and rates its strength based on length, and inclusion of uppercase, lowercase, numbers, and symbols.",
+            },
+            "Policy & Compliance": {
+                "Draft Data Protection Policy": "Provide guidance on drafting a data protection and privacy policy in accordance with GDPR for a small e-commerce company.",
+                "Update Security Policies": "Review the following (outdated) security policy and suggest updates to align with modern industry best practices and the evolving threat landscape.",
+                "Develop Password Management Policy": "Assist in developing a password management policy that promotes strong, unique passwords and the use of multi-factor authentication (MFA).",
+                "Create Mobile Device Policy (BYOD)": "Offer recommendations for creating a mobile device management policy (MDM) to secure employee-owned devices (BYOD) and protect corporate data.",
+                "Establish Network Access Control Policy": "Assist in establishing a network access control (NAC) policy to ensure only authorized and compliant devices can connect to the organization’s network.",
+                "Outline Incident Response Policy": "Provide guidance on creating an incident response policy that clearly outlines roles, responsibilities, communication channels, and escalation procedures.",
+                "Define Patch Management Policy": "Help define a patch management policy that ensures timely updates and vulnerability remediation across all systems and software, with a focus on critical assets.",
+                "Develop Encryption Policy": "Assist in developing a data encryption policy to protect sensitive data at rest and in transit, specifying required algorithms and key management procedures.",
+                "Create Employee Training Policy": "Guide the creation of an employee security training and awareness policy to promote a security-conscious culture within the organization.",
+                "Generate ROE Report": "You are a senior penetration testing engagement manager. Based on the provided target scope, generate a formal Rules of Engagement (ROE) document in Markdown format.",
             },
         }
 
@@ -1425,6 +1484,18 @@ class AIAssistantTab(QWidget):
         chat_layout = QVBoxLayout(chat_container)
         chat_layout.setContentsMargins(10, 10, 10, 10)
         chat_layout.setSpacing(10)
+
+        # Add a static header
+        header = QTextBrowser()
+        header.setHtml("""
+            <div align="center">
+                <h2>GScapy + AI Assistant</h2>
+                <p>Your smart, context-aware cybersecurity assistant.</p>
+            </div>
+        """)
+        header.setFixedHeight(80)
+        header.setStyleSheet("QTextBrowser { border: none; }")
+        chat_layout.addWidget(header)
 
         self.chat_list = QListWidget(self)
         self.chat_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
@@ -1477,7 +1548,7 @@ class AIAssistantTab(QWidget):
     def update_theme(self):
         """Updates the icon color to match the new theme."""
         text_color = self.palette().color(QPalette.ColorRole.WindowText).name()
-        self.ai_settings_btn.setIcon(create_themed_icon(os.path.join("icons", "tool.svg"), text_color))
+        self.ai_settings_btn.setIcon(create_themed_icon(os.path.join("icons", "gear.svg"), text_color))
 
     def _populate_prompts(self):
         for category, prompts in self.ai_prompts.items():
@@ -1499,10 +1570,16 @@ class AIAssistantTab(QWidget):
 
     def _add_chat_bubble(self, message, is_user):
         item = QListWidgetItem(self.chat_list)
-        bubble = ChatBubble(message, is_user)
-        item.setSizeHint(bubble.sizeHint())
+        bubble = ChatBubble(message, is_user, parent=self.chat_list)
+
+        # Add the item to the list and set the custom widget for it.
+        # Setting the widget parents it, which is crucial for sizeHint to work.
         self.chat_list.addItem(item)
         self.chat_list.setItemWidget(item, bubble)
+
+        # Now that the bubble is parented and has context, we can set the size hint.
+        item.setSizeHint(bubble.sizeHint())
+
         self.chat_list.scrollToBottom()
 
     def _show_typing_indicator(self, show=True):
