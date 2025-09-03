@@ -1290,7 +1290,7 @@ class ThinkingWidget(QWidget):
 
         self.content_widget = QTextEdit()
         self.content_widget.setReadOnly(True)
-        self.content_widget.setStyleSheet("background-color: #f7f7f7; border: 1px solid #e0e0e0; border-top: none; border-radius: 5px;")
+        self.content_widget.setStyleSheet("background-color: #f7f7f7; border: 1px solid #e0e0e0; border-top: none; border-radius: 5px; color: #888;")
 
         self.main_layout.addWidget(self.header_frame)
         self.main_layout.addWidget(self.content_widget)
@@ -1341,8 +1341,8 @@ class ChatBubble(QWidget):
         self.set_stylesheet()
 
     def set_stylesheet(self):
-        padding = "12px 15px 12px 15px"
         if self.is_user:
+            padding = "12px 15px 12px 15px"
             self.label.setStyleSheet(f"""
                 background-color: #3d5a80;
                 color: white;
@@ -1351,6 +1351,7 @@ class ChatBubble(QWidget):
             """)
             self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
+            padding = "12px 15px 20px 15px"
             bg_color = "#E5E5EA"
             if self.is_streaming:
                 bg_color = "#F5F5F5"
@@ -1507,7 +1508,7 @@ class AIAssistantTab(QWidget):
         input_frame_layout.addWidget(self.user_input)
 
         self.send_button = QPushButton()
-        self.send_button.setFixedSize(32, 32)
+        self.send_button.setFixedSize(40, 40)
         self.send_button.setStyleSheet("QPushButton { border: none; }")
         self.send_button.setToolTip("Send Message")
         input_frame_layout.addWidget(self.send_button)
@@ -1516,7 +1517,7 @@ class AIAssistantTab(QWidget):
 
         self.ai_settings_btn = QPushButton()
         self.ai_settings_btn.setToolTip("Configure & Select AI Models")
-        self.ai_settings_btn.setFixedSize(32, 32)
+        self.ai_settings_btn.setFixedSize(40, 40)
         self.ai_settings_btn.setStyleSheet("QPushButton { border: none; }")
         bottom_controls_layout.addWidget(self.ai_settings_btn)
 
@@ -1534,8 +1535,9 @@ class AIAssistantTab(QWidget):
         """Updates the icon color to match the new theme."""
         text_color = self.palette().color(QPalette.ColorRole.WindowText).name()
         self.ai_settings_btn.setIcon(create_themed_icon(os.path.join("icons", "gear.svg"), text_color))
+        self.ai_settings_btn.setIconSize(QSize(32, 32))
         self.send_button.setIcon(create_themed_icon(os.path.join("icons", "paper-airplane.svg"), text_color))
-        self.send_button.setIconSize(QSize(24, 24))
+        self.send_button.setIconSize(QSize(32, 32))
 
     def _populate_prompts(self):
         for category, prompts in self.ai_prompts.items():
