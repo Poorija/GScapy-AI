@@ -1054,15 +1054,29 @@ class AIAnalysisThread(QThread):
             
             with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60) as resp:
                 resp.raise_for_status()
-                for line in resp.iter_lines(decode_unicode=True):
+                # Process the stream as raw bytes to avoid decoding errors
+                for line in resp.iter_lines():
                     if self.stop_event.is_set():
                         break
-                    if not line or not line.startswith("data:"):
+                    # Line is bytes, so compare with bytes
+                    if not line or not line.startswith(b"data:"):
                         continue
-                    data = json.loads(line[5:])
-                    chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                    if chunk:
-                        self.response_ready.emit(chunk, False, False)
+
+                    # Decode the line to a string before JSON parsing
+                    line_str = line[5:].decode('utf-8')
+
+                    # The stream might send empty data chunks
+                    if not line_str.strip():
+                        continue
+
+                    try:
+                        data = json.loads(line_str)
+                        chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if chunk:
+                            self.response_ready.emit(chunk, False, False)
+                    except json.JSONDecodeError:
+                        logging.debug(f"Ignoring incomplete JSON in AI stream: {line_str}")
+                        continue
         except Exception as e:
             self.error.emit(str(e))
             
