@@ -78,7 +78,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QSplitter, QFileDialog, QMessageBox, QComboBox,
     QListWidget, QListWidgetItem, QScrollArea, QLineEdit, QCheckBox, QFrame, QMenu, QTextEdit, QGroupBox,
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
-    QHeaderView, QInputDialog, QGraphicsOpacityEffect, QSizePolicy
+    QHeaderView, QInputDialog, QGraphicsOpacityEffect, QSizePolicy, QListView
 )
 from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup, QPoint, QSize
 from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
@@ -1029,12 +1029,12 @@ class AIAnalysisThread(QThread):
         self.prompt = prompt
         self.settings = settings
         self.stop_event = Event()
+        self.full_response_content = ""
         
     def run(self):
         try:
             import requests
             import json
-            self.error.emit("DEBUG: AIAnalysisThread started.")
             provider = self.settings.get("provider")
             endpoint = self.settings.get("endpoint")
             model = self.settings.get("model")
@@ -1042,7 +1042,6 @@ class AIAnalysisThread(QThread):
             
             if not all([provider, endpoint, model]):
                 raise ValueError("AI provider, model, or endpoint is not configured.")
-            self.error.emit(f"DEBUG: Provider={provider}, Endpoint={endpoint}")
 
             headers = {"Content-Type": "application/json"}
             if api_key and provider == "OpenAI":
@@ -1053,24 +1052,55 @@ class AIAnalysisThread(QThread):
                 "messages": [{"role": "user", "content": self.prompt}],
                 "stream": True
             }
-            self.error.emit("DEBUG: Sending request to AI server...")
             
             with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60) as resp:
-                self.error.emit(f"DEBUG: Received response with status code {resp.status_code}")
                 resp.raise_for_status()
-
                 for line in resp.iter_lines():
                     if self.stop_event.is_set():
-                        self.error.emit("DEBUG: Stop event detected.")
                         break
+                    if not line:
+                        continue
 
-                    # Emit every raw line for debugging purposes
-                    self.error.emit(f"DEBUG_LINE: {line!r}")
+                    try:
+                        line_str = line.decode('utf-8').strip()
+                        if line_str.startswith("data:"):
+                            line_str = line_str[5:].strip()
 
+                        if not line_str or line_str == "[DONE]":
+                            continue
+
+                        data = json.loads(line_str)
+                        chunk = ""
+
+                        # Handle OpenAI-compatible format (and others that use 'choices')
+                        if "choices" in data:
+                            chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        # Handle Ollama's native format
+                        elif "message" in data:
+                            current_content = data.get("message", {}).get("content", "")
+                            chunk = current_content[len(self.full_response_content):]
+                            self.full_response_content = current_content
+                        # Handle a simple 'content' or 'response' key as a fallback
+                        elif "content" in data:
+                             chunk = data.get("content")[len(self.full_response_content):]
+                             self.full_response_content = data.get("content")
+                        elif "response" in data:
+                             chunk = data.get("response")[len(self.full_response_content):]
+                             self.full_response_content = data.get("response")
+
+
+                        if chunk:
+                            self.response_ready.emit(chunk, False, False)
+
+                        # Check for the 'done' flag from Ollama
+                        if data.get("done"):
+                            break
+
+                    except (json.JSONDecodeError, UnicodeDecodeError, IndexError):
+                        logging.debug(f"Ignoring non-standard line in AI stream: {line}")
+                        continue
         except Exception as e:
-            # Emit the full exception for debugging
-            import traceback
-            self.error.emit(f"DEBUG_ERROR: {str(e)}\n{traceback.format_exc()}")
+            self.error.emit(str(e))
             
     def stop(self):
         self.stop_event.set()
@@ -1463,6 +1493,7 @@ class AIAssistantTab(QWidget):
         self.chat_list = QListWidget(self)
         self.chat_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.chat_list.setStyleSheet("QListWidget { border: none; }")
+        self.chat_list.setResizeMode(QListView.ResizeMode.Adjust)
         chat_layout.addWidget(self.chat_list)
         
         self.typing_indicator = QLabel("● ● ●")
