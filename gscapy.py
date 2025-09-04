@@ -1034,6 +1034,7 @@ class AIAnalysisThread(QThread):
         try:
             import requests
             import json
+            self.error.emit("DEBUG: AIAnalysisThread started.")
             provider = self.settings.get("provider")
             endpoint = self.settings.get("endpoint")
             model = self.settings.get("model")
@@ -1041,7 +1042,8 @@ class AIAnalysisThread(QThread):
             
             if not all([provider, endpoint, model]):
                 raise ValueError("AI provider, model, or endpoint is not configured.")
-                
+            self.error.emit(f"DEBUG: Provider={provider}, Endpoint={endpoint}")
+
             headers = {"Content-Type": "application/json"}
             if api_key and provider == "OpenAI":
                 headers["Authorization"] = f"Bearer {api_key}"
@@ -1051,39 +1053,24 @@ class AIAnalysisThread(QThread):
                 "messages": [{"role": "user", "content": self.prompt}],
                 "stream": True
             }
+            self.error.emit("DEBUG: Sending request to AI server...")
             
             with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60) as resp:
+                self.error.emit(f"DEBUG: Received response with status code {resp.status_code}")
                 resp.raise_for_status()
-                # Process the stream as raw bytes to avoid decoding errors
+
                 for line in resp.iter_lines():
                     if self.stop_event.is_set():
+                        self.error.emit("DEBUG: Stop event detected.")
                         break
-                    if not line:
-                        continue
 
-                    try:
-                        # The response line may or may not start with 'data: '.
-                        # We decode first, then strip whitespace and the prefix if it exists.
-                        line_str = line.decode('utf-8').strip()
-                        if line_str.startswith("data:"):
-                            line_str = line_str[5:].strip()
+                    # Emit every raw line for debugging purposes
+                    self.error.emit(f"DEBUG_LINE: {line!r}")
 
-                        if not line_str:
-                            continue
-
-                        # Some streams send a final "[DONE]" message which is not JSON
-                        if line_str == "[DONE]":
-                            break
-
-                        data = json.loads(line_str)
-                        chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if chunk:
-                            self.response_ready.emit(chunk, False, False)
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        logging.debug(f"Ignoring non-JSON line in AI stream: {line}")
-                        continue
         except Exception as e:
-            self.error.emit(str(e))
+            # Emit the full exception for debugging
+            import traceback
+            self.error.emit(f"DEBUG_ERROR: {str(e)}\n{traceback.format_exc()}")
             
     def stop(self):
         self.stop_event.set()
