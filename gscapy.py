@@ -1331,59 +1331,72 @@ class ChatBubble(QWidget):
         super().__init__(parent)
         self.is_user = is_user
         self.is_streaming = is_streaming
+
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(10, 5, 10, 5) # Add some margin
+
         self.label = QLabel(text)
         self.label.setWordWrap(True)
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.layout.addWidget(self.label)
+
+        # This frame will act as the visible bubble
+        self.bubble_frame = QFrame()
+        self.bubble_frame.setLayout(QVBoxLayout())
+        self.bubble_frame.layout().setContentsMargins(12, 12, 12, 12)
+        self.bubble_frame.layout().addWidget(self.label)
+
+        self.layout.addWidget(self.bubble_frame)
         self.set_stylesheet()
 
     def set_stylesheet(self):
+        # Determine background color based on theme and streaming state
+        palette = QApplication.instance().palette()
+        text_color = palette.color(QPalette.ColorRole.Text).name()
+
         if self.is_user:
-            self.label.setStyleSheet("""
-                background-color: #3d5a80;
-                color: white;
-                padding: 12px 15px;
-                border-radius: 15px;
-            """)
+            bubble_bg_color = "#3d5a80"
+            text_color = "white"
             self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
-            bg = "#E5E5EA" # Default non-streaming background
-            # The theme might be light or dark, so let's pick a color that works for both.
-            # A slightly different color for streaming makes it clear it's in progress.
-            if QApplication.instance().palette().color(QPalette.ColorRole.Base).lightness() < 128:
-                 # Dark theme
-                 bg = "#2E3440" if self.is_streaming else "#3B4252"
-            else:
-                 # Light theme
-                 bg = "#F5F5F5" if self.is_streaming else "#E5E5EA"
-
-
-            self.label.setStyleSheet(f"""
-                background-color: {bg};
-                color: {QApplication.instance().palette().color(QPalette.ColorRole.Text).name()};
-                padding: 12px 15px;
-                border-radius: 15px;
-            """)
+            if palette.color(QPalette.ColorRole.Base).lightness() < 128: # Dark theme
+                bubble_bg_color = "#2E3440" if self.is_streaming else "#3B4252"
+            else: # Light theme
+                bubble_bg_color = "#F5F5F5" if self.is_streaming else "#E5E5EA"
             self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        self.bubble_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bubble_bg_color};
+                border-radius: 15px;
+            }}
+            QLabel {{
+                background-color: transparent;
+                color: {text_color};
+            }}
+        """)
 
     def append_text(self, text_chunk: str):
         """Appends a chunk of text to the label."""
         self.label.setText(self.label.text() + text_chunk)
-        # The layout manager will handle resizing the widget automatically.
-        # We just need to ensure the parent list item is notified.
+        # The resizeEvent will handle the width constraint.
+        # We just need to ensure the layout is updated.
+        self.layout.activate()
 
     def finish_streaming(self):
         """Finalizes the bubble's appearance after streaming is complete."""
         self.is_streaming = False
         self.set_stylesheet()
 
-    def sizeHint(self):
-        """Provides the ideal size for the widget, which is determined by its label."""
-        # We explicitly call the label's sizeHint to ensure it's up-to-date
-        return self.label.sizeHint()
+    def resizeEvent(self, event):
+        """
+        This is the key fix. When the ChatBubble widget is resized by the list view,
+        this event fires. We use the new width to constrain our label, which forces
+        it to calculate its word-wrapped height correctly.
+        """
+        super().resizeEvent(event)
+        # Set the label's maximum width to be slightly less than the bubble's width
+        # to account for layout margins and padding.
+        self.label.setMaximumWidth(self.width() - 50)
 
 class AIAssistantTab(QWidget):
     def __init__(self, parent=None):
