@@ -1058,24 +1058,29 @@ class AIAnalysisThread(QThread):
                 for line in resp.iter_lines():
                     if self.stop_event.is_set():
                         break
-                    # Line is bytes, so compare with bytes
-                    if not line or not line.startswith(b"data:"):
-                        continue
-
-                    # Decode the line to a string before JSON parsing
-                    line_str = line[5:].decode('utf-8')
-
-                    # The stream might send empty data chunks
-                    if not line_str.strip():
+                    if not line:
                         continue
 
                     try:
+                        # The response line may or may not start with 'data: '.
+                        # We decode first, then strip whitespace and the prefix if it exists.
+                        line_str = line.decode('utf-8').strip()
+                        if line_str.startswith("data:"):
+                            line_str = line_str[5:].strip()
+
+                        if not line_str:
+                            continue
+
+                        # Some streams send a final "[DONE]" message which is not JSON
+                        if line_str == "[DONE]":
+                            break
+
                         data = json.loads(line_str)
                         chunk = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
                         if chunk:
                             self.response_ready.emit(chunk, False, False)
-                    except json.JSONDecodeError:
-                        logging.debug(f"Ignoring incomplete JSON in AI stream: {line_str}")
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        logging.debug(f"Ignoring non-JSON line in AI stream: {line}")
                         continue
         except Exception as e:
             self.error.emit(str(e))
@@ -1314,7 +1319,7 @@ class ChatBubble(QWidget):
         self.label = QLabel(text)
         self.label.setWordWrap(True)
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.layout.addWidget(self.label)
         self.set_stylesheet()
 
