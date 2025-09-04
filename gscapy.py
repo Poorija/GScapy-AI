@@ -78,7 +78,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QSplitter, QFileDialog, QMessageBox, QComboBox,
     QListWidget, QListWidgetItem, QScrollArea, QLineEdit, QCheckBox, QFrame, QMenu, QTextEdit, QGroupBox,
     QProgressBar, QTextBrowser, QRadioButton, QButtonGroup, QFormLayout, QGridLayout, QDialog,
-    QHeaderView, QInputDialog, QGraphicsOpacityEffect
+    QHeaderView, QInputDialog, QGraphicsOpacityEffect, QSizePolicy
 )
 from PyQt6.QtCore import QObject, pyqtSignal, Qt, QThread, QTimer, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QSequentialAnimationGroup, QPoint, QSize
 from PyQt6.QtGui import QAction, QIcon, QFont, QTextCursor, QActionGroup
@@ -1291,8 +1291,6 @@ class ThinkingWidget(QWidget):
         return not self.is_expanded
 
 class ChatBubble(QWidget):
-    sizeHintChanged = pyqtSignal(QSize)
-    
     def __init__(self, text: str, is_user: bool, is_streaming: bool = False, parent=None):
         super().__init__(parent)
         self.is_user = is_user
@@ -1302,10 +1300,10 @@ class ChatBubble(QWidget):
         self.label = QLabel(text)
         self.label.setWordWrap(True)
         self.label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)  # ➜ Fix
+        self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         self.layout.addWidget(self.label)
         self.set_stylesheet()
-        
+
     def set_stylesheet(self):
         if self.is_user:
             self.label.setStyleSheet("""
@@ -1316,26 +1314,39 @@ class ChatBubble(QWidget):
             """)
             self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
         else:
-            bg = "#F5F5F5" if self.is_streaming else "#E5E5EA"
+            bg = "#E5E5EA" # Default non-streaming background
+            # The theme might be light or dark, so let's pick a color that works for both.
+            # A slightly different color for streaming makes it clear it's in progress.
+            if QApplication.instance().palette().color(QPalette.ColorRole.Base).lightness() < 128:
+                 # Dark theme
+                 bg = "#2E3440" if self.is_streaming else "#3B4252"
+            else:
+                 # Light theme
+                 bg = "#F5F5F5" if self.is_streaming else "#E5E5EA"
+
+
             self.label.setStyleSheet(f"""
                 background-color: {bg};
-                color: black;
+                color: {QApplication.instance().palette().color(QPalette.ColorRole.Text).name()};
                 padding: 12px 15px;
                 border-radius: 15px;
             """)
             self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            
+
     def append_text(self, text_chunk: str):
+        """Appends a chunk of text to the label."""
         self.label.setText(self.label.text() + text_chunk)
-        self.label.adjustSize()  # ➜ Fix
-        self.adjustSize()        # ➜ Fix
-        self.sizeHintChanged.emit(self.sizeHint())
-        
+        # The layout manager will handle resizing the widget automatically.
+        # We just need to ensure the parent list item is notified.
+
     def finish_streaming(self):
+        """Finalizes the bubble's appearance after streaming is complete."""
         self.is_streaming = False
         self.set_stylesheet()
-        
+
     def sizeHint(self):
+        """Provides the ideal size for the widget, which is determined by its label."""
+        # We explicitly call the label's sizeHint to ensure it's up-to-date
         return self.label.sizeHint()
 
 class AIAssistantTab(QWidget):
@@ -1344,6 +1355,7 @@ class AIAssistantTab(QWidget):
         self.parent = parent
         self.thinking_widget = None
         self.current_ai_bubble = None
+        self.current_ai_item = None
         self.ai_thread = None
 
         self.ai_prompts = {
@@ -1535,14 +1547,16 @@ class AIAssistantTab(QWidget):
             return
         
         if self.current_ai_bubble is None:
-            item = QListWidgetItem(self.chat_list)
+            self.current_ai_item = QListWidgetItem(self.chat_list)
             self.current_ai_bubble = ChatBubble("", is_user=False, is_streaming=True, parent=self.chat_list)
-            self.chat_list.addItem(item)
-            self.chat_list.setItemWidget(item, self.current_ai_bubble)
-            item.setSizeHint(self.current_ai_bubble.sizeHint())
-            
+            self.chat_list.addItem(self.current_ai_item)
+            self.chat_list.setItemWidget(self.current_ai_item, self.current_ai_bubble)
+            self.current_ai_item.setSizeHint(self.current_ai_bubble.sizeHint())
+
         self.current_ai_bubble.append_text(chunk)
-        self.chat_list.updateGeometries()  # ➜ Fix
+        # Update the item's size hint to the bubble's new size.
+        if self.current_ai_item:
+            self.current_ai_item.setSizeHint(self.current_ai_bubble.sizeHint())
         self.chat_list.scrollToBottom()
         
     def on_ai_thread_finished(self):
@@ -1551,6 +1565,7 @@ class AIAssistantTab(QWidget):
             self.current_ai_bubble.finish_streaming()
         self.thinking_widget = None
         self.current_ai_bubble = None
+        self.current_ai_item = None
         
     def handle_ai_error(self, error_message: str):
         self.typing_indicator.hide()
